@@ -2,7 +2,7 @@
   "name": "kicadstudio",
   "displayName": "KiCad Studio",
   "description": "The complete KiCad development environment for VS Code — view schematics & PCBs, run DRC/ERC, export production files, search components, and get AI-powered design assistance.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "oaslananka",
   "engines": {
     "vscode": "^1.95.0",
@@ -33,27 +33,19 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://dev.azure.com/oaslananka/open-source/_git/kicad-studio"
+    "url": "https://github.com/oaslananka/kicad-studio"
   },
   "bugs": {
-    "url": "https://dev.azure.com/oaslananka/open-source/_git/kicad-studio"
+    "url": "https://github.com/oaslananka/kicad-studio"
   },
-  "homepage": "https://dev.azure.com/oaslananka/open-source/_git/kicad-studio",
+  "homepage": "https://github.com/oaslananka/kicad-studio",
   "license": "MIT",
   "main": "./dist/extension.js",
   "activationEvents": [
     "workspaceContains:**/*.kicad_pro",
     "workspaceContains:**/*.kicad_jobset",
     "workspaceContains:**/*.kicad_sch",
-    "workspaceContains:**/*.kicad_pcb",
-    "onLanguage:kicad-schematic",
-    "onLanguage:kicad-pcb",
-    "onLanguage:kicad-symbol",
-    "onLanguage:kicad-footprint",
-    "onLanguage:kicad-project",
-    "onView:kicadstudio.projectTree",
-    "onView:kicadstudio.bomView",
-    "onView:kicadstudio.netlistView"
+    "workspaceContains:**/*.kicad_pcb"
   ],
   "contributes": {
     "languages": [
@@ -189,17 +181,20 @@
       "kicadstudio-sidebar": [
         {
           "id": "kicadstudio.projectTree",
-          "name": "KiCad Project"
+          "name": "KiCad Project",
+          "icon": "assets/icon-dark.png"
         },
         {
           "id": "kicadstudio.bomView",
           "name": "Bill of Materials",
-          "when": "kicadstudio.schematicOpen"
+          "when": "kicadstudio.schematicOpen",
+          "icon": "assets/icon-dark.png"
         },
         {
           "id": "kicadstudio.netlistView",
           "name": "Netlist",
-          "when": "kicadstudio.schematicOpen"
+          "when": "kicadstudio.schematicOpen",
+          "icon": "assets/icon-dark.png"
         }
       ]
     },
@@ -772,7 +767,8 @@
     ]
   },
   "scripts": {
-    "prepare:media": "node scripts/generate-icon.js && node scripts/bundle-kicanvas.js",
+    "prepare:media": "node scripts/bundle-kicanvas.js",
+    "generate:assets": "node scripts/generate-icon.js",
     "vscode:prepublish": "npm run build:prod",
     "build": "npm run prepare:media && webpack --mode development",
     "build:prod": "npm run prepare:media && webpack --mode production",

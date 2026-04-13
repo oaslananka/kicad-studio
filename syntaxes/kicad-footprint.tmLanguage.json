@@ -3,19 +3,45 @@
   "name": "KiCad Footprint",
   "scopeName": "source.kicad.mod",
   "patterns": [
-    { "include": "#comment" },
-    { "include": "#string" },
-    { "include": "#uuid" },
-    { "include": "#number" },
-    { "include": "#boolean" },
-    { "include": "#controlKeywords" },
-    { "include": "#padTypes" },
-    { "include": "#padShapes" },
-    { "include": "#otherKeywords" },
-    { "include": "#footprintName" },
-    { "include": "#layerNames" },
-    { "include": "#support" },
-    { "include": "#parens" }
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#uuid"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#boolean"
+    },
+    {
+      "include": "#controlKeywords"
+    },
+    {
+      "include": "#padTypes"
+    },
+    {
+      "include": "#padShapes"
+    },
+    {
+      "include": "#otherKeywords"
+    },
+    {
+      "include": "#footprintName"
+    },
+    {
+      "include": "#layerNames"
+    },
+    {
+      "include": "#support"
+    },
+    {
+      "include": "#parens"
+    }
   ],
   "repository": {
     "comment": {

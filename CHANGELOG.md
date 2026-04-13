@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] - 2026-04-13
+
+### Changed
+
+- Azure DevOps pipelines now use `UseNode@1` instead of deprecated `NodeTool@0` to remove deprecation warnings in CI and publish jobs.
+
 ## [1.0.0] - 2026-04-13
 
 ### Added
