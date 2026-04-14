@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ComponentSearchService } from '../../src/components/componentSearch';
 import { ComponentSearchCache } from '../../src/components/componentSearchCache';
+import { openDatasheet } from '../../src/components/datasheetOpener';
 import { __setConfiguration, createExtensionContextMock } from './vscodeMock';
 
 function createPanelMock() {
@@ -152,6 +153,20 @@ describe('ComponentSearchCache', () => {
     expect(vscode.env.openExternal).toHaveBeenCalled();
     expect(panelMock.panel.title).toContain('STM32F411');
     expect(panelMock.panel.webview.html).toContain('Open Datasheet');
+  });
+
+  it('rejects non-http datasheet URLs before opening externally', async () => {
+    jest.clearAllMocks();
+
+    await openDatasheet('javascript:alert(1)');
+    await openDatasheet('not a url');
+    await openDatasheet('https://example.com/datasheet.pdf');
+
+    expect(vscode.env.openExternal).toHaveBeenCalledTimes(1);
+    expect(vscode.env.openExternal).toHaveBeenCalledWith(
+      expect.objectContaining({ fsPath: 'https://example.com/datasheet.pdf' })
+    );
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to LCSC when Octopart returns no results', async () => {

@@ -11,7 +11,7 @@
   }
 
   function sanitizeHtml(value) {
-    return String(value).replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '');
+    return escapeHtml(value);
   }
 
   function renderInline(text) {
@@ -87,7 +87,7 @@
       html.push('</code></pre>');
     }
 
-    return sanitizeHtml(html.join(''));
+    return html.join('');
   }
 
   window.KiCadChatMarkdown = {

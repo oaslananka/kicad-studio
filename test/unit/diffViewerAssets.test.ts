@@ -21,4 +21,22 @@ describe('diff viewer assets', () => {
     expect(html).toContain('connect-src {{cspSource}} blob: data:;');
     expect(html).toContain('img-src {{cspSource}} data: blob:;');
   });
+
+  it('renders BOM and netlist rows without innerHTML string templates', () => {
+    const bomScript = fs.readFileSync(path.join(root, 'media', 'viewer', 'bom.js'), 'utf8');
+    const netlistScript = fs.readFileSync(path.join(root, 'media', 'viewer', 'netlist.js'), 'utf8');
+
+    expect(bomScript).toContain('rowsEl.replaceChildren');
+    expect(netlistScript).toContain('rowsEl.replaceChildren');
+    expect(bomScript).not.toContain('rowsEl.innerHTML');
+    expect(netlistScript).not.toContain('rowsEl.innerHTML');
+  });
+
+  it('escapes raw chat messages before assigning them to innerHTML', () => {
+    const markdownScript = fs.readFileSync(path.join(root, 'media', 'vendor', 'chat-markdown.js'), 'utf8');
+
+    expect(markdownScript).toContain('function sanitizeHtml(value)');
+    expect(markdownScript).toContain('return escapeHtml(value);');
+    expect(markdownScript).not.toContain('replace(/<script');
+  });
 });

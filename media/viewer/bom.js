@@ -35,23 +35,11 @@
         return String(a).localeCompare(String(b), undefined, { numeric: true }) * sortDir;
       });
 
-    rowsEl.innerHTML = filtered
-      .map((entry) => {
-        const lcsc = entry.lcsc
-          ? `<a class="chip-link" href="https://www.lcsc.com/search?q=${encodeURIComponent(entry.lcsc)}">${entry.lcsc}</a>`
-          : '<span class="muted">—</span>';
-        return `<tr data-reference="${entry.references[0] || ''}">
-          <td>${entry.references.join(', ')}</td>
-          <td>${entry.quantity}</td>
-          <td>${entry.value}</td>
-          <td>${entry.footprint}</td>
-          <td>${entry.mpn || '<span class="muted">—</span>'}</td>
-          <td>${entry.manufacturer || '<span class="muted">—</span>'}</td>
-          <td>${lcsc}</td>
-          <td>${entry.description || '<span class="muted">—</span>'}</td>
-        </tr>`;
-      })
-      .join('');
+    const fragment = document.createDocumentFragment();
+    for (const entry of filtered) {
+      fragment.appendChild(createRow(entry));
+    }
+    rowsEl.replaceChildren(fragment);
 
     for (const row of rowsEl.querySelectorAll('tr')) {
       row.addEventListener('click', () => {
@@ -61,6 +49,51 @@
         });
       });
     }
+  }
+
+  function createRow(entry) {
+    const row = document.createElement('tr');
+    row.dataset.reference = entry.references[0] || '';
+    appendTextCell(row, entry.references.join(', '));
+    appendTextCell(row, entry.quantity);
+    appendTextCell(row, entry.value);
+    appendTextCell(row, entry.footprint);
+    appendTextCell(row, entry.mpn, true);
+    appendTextCell(row, entry.manufacturer, true);
+    appendLcscCell(row, entry.lcsc);
+    appendTextCell(row, entry.description, true);
+    return row;
+  }
+
+  function appendTextCell(row, value, mutedWhenEmpty) {
+    const cell = document.createElement('td');
+    const text = String(value ?? '');
+    if (mutedWhenEmpty && !text) {
+      const muted = document.createElement('span');
+      muted.className = 'muted';
+      muted.textContent = '—';
+      cell.appendChild(muted);
+    } else {
+      cell.textContent = text;
+    }
+    row.appendChild(cell);
+  }
+
+  function appendLcscCell(row, value) {
+    const cell = document.createElement('td');
+    if (value) {
+      const link = document.createElement('a');
+      link.className = 'chip-link';
+      link.href = `https://www.lcsc.com/search?q=${encodeURIComponent(value)}`;
+      link.textContent = value;
+      cell.appendChild(link);
+    } else {
+      const muted = document.createElement('span');
+      muted.className = 'muted';
+      muted.textContent = '—';
+      cell.appendChild(muted);
+    }
+    row.appendChild(cell);
   }
 
   headers.forEach((header) => {

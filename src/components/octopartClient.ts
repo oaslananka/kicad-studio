@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { OCTOPART_SECRET_KEY } from '../constants';
 import type { ComponentSearchResult } from '../types';
+import { fetchWithTimeout } from './fetchWithTimeout';
 
 export class OctopartClient {
   constructor(private readonly secrets: vscode.SecretStorage) {}
@@ -15,7 +16,7 @@ export class OctopartClient {
       throw new Error('Octopart/Nexar API key is not configured. Run "KiCad: Set Octopart/Nexar API Key".');
     }
 
-    const response = await fetch('https://api.nexar.com/graphql', {
+    const response = await fetchWithTimeout('https://api.nexar.com/graphql', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

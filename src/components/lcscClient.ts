@@ -1,8 +1,9 @@
 import type { ComponentSearchResult } from '../types';
+import { fetchWithTimeout } from './fetchWithTimeout';
 
 export class LcscClient {
   async search(query: string): Promise<ComponentSearchResult[]> {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://wmsc.lcsc.com/wmsc/search/global?keyword=${encodeURIComponent(query)}`
     );
     if (!response.ok) {

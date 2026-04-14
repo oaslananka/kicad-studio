@@ -713,7 +713,7 @@
         "kicadstudio.ai.model": {
           "type": "string",
           "default": "",
-          "description": "Optional AI model override. Leave empty to use the provider default: claude-sonnet-4-6 for Claude or gpt-4.1 for OpenAI."
+          "description": "Optional AI model override. Leave empty to use the provider default: claude-sonnet-4-6 for Claude or gpt-5.4 for OpenAI."
         },
         "kicadstudio.ai.openaiApiMode": {
           "type": "string",

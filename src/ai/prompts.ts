@@ -8,7 +8,7 @@ export interface KiCadContext {
 
 export const DEFAULT_AI_LANGUAGE: AiLanguage = 'en';
 export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-4-6';
-export const DEFAULT_OPENAI_MODEL = 'gpt-4.1';
+export const DEFAULT_OPENAI_MODEL = 'gpt-5.4';
 export const DEFAULT_OPENAI_API_MODE = 'responses';
 
 const LANGUAGE_NAMES: Record<AiLanguage, string> = {
