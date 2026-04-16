@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-04-16
+
+### Fixed
+
+- Hardened the Playwright VS Code smoke-test harness cleanup path for Windows temp directories so release validation no longer fails on transient `EPERM` cleanup locks.
+
+## [2.3.2] - 2026-04-16
+
+### Changed
+
+- Repackaged the 2.3.1 test-hardening release so the published VSIX, changelog, and GitHub release metadata stay in sync.
+- Refreshed the marketplace artifact from the current repository state without changing runtime behavior.
+
 ## [2.3.1] - 2026-04-16
 
 ### Added

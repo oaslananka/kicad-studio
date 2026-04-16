@@ -76,7 +76,7 @@ export async function launchVsCodeWithFixtures(): Promise<VsCodeSession> {
       await browser.close().catch(() => undefined);
     }
     await killProcess(child);
-    cleanupDirectories([workspacePath, userDataDir, extensionsDir]);
+    await cleanupDirectories([workspacePath, userDataDir, extensionsDir]);
     throw error;
   }
 }
@@ -111,7 +111,7 @@ async function closeSession(
 ): Promise<void> {
   await browser.close().catch(() => undefined);
   await killProcess(child);
-  cleanupDirectories(directories);
+  await cleanupDirectories(directories);
 }
 
 async function killProcess(child: ChildProcessWithoutNullStreams): Promise<void> {
@@ -129,9 +129,25 @@ async function killProcess(child: ChildProcessWithoutNullStreams): Promise<void>
   });
 }
 
-function cleanupDirectories(directories: string[]): void {
+async function cleanupDirectories(directories: string[]): Promise<void> {
   for (const directory of directories) {
-    fs.rmSync(directory, { recursive: true, force: true });
+    await removeDirectoryWithRetry(directory);
+  }
+}
+
+async function removeDirectoryWithRetry(directory: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      fs.rmSync(directory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = error instanceof NodeJS.ErrnoException ? error.code : undefined;
+      if (attempt === 4 || (code !== 'EPERM' && code !== 'ENOTEMPTY' && code !== 'EBUSY')) {
+        // Cleanup should not turn a passing smoke test into a failure on Windows.
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
   }
 }
 
