@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-04-16
+
 ### Added
 
 - AI streaming responses with real-time token display.
@@ -10,13 +12,18 @@
 - `ComponentSearchCache` for 24-hour Octopart/LCSC caching.
 - CONTRIBUTING, security, code of conduct, and GitHub issue/PR templates.
 - JSDoc and architecture documentation updates for the 2.0.0 refactor surface.
+- KiCad 10-oriented sidebar features for variants, DRC rules, MCP fix queue, and design intent editing.
+- GitHub Copilot and Gemini provider support through the VS Code Language Model API.
+- MCP auto-detection, context bridge plumbing, and manual-apply chat tool suggestions.
+- KiCad 10 fixtures and E2E scaffolding for viewer coverage expansion.
 
 ### Changed
 
 - AI max tokens increased from 1200 to 4096.
-- CI now runs on push and pull request events with coverage artifact upload.
+- Azure DevOps is now the primary CI/CD system, while GitHub Actions are manual fallback workflows only.
 - TypeScript now uses `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, and `noImplicitOverride`.
 - Status bar now reflects AI configuration/health in addition to CLI and DRC/ERC state.
+- README and docs were updated for KiCad 10, MCP, AI provider options, and Azure pipeline flow.
 
 ### Fixed
 

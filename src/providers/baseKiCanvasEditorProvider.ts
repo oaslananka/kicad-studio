@@ -7,17 +7,19 @@ import {
   VIEWER_HIDDEN_CACHE_RELEASE_MS,
   WEBVIEW_MESSAGE_DEBOUNCE_MS
 } from '../constants';
-import type { ViewerState } from '../types';
+import type { ViewerMetadata, ViewerState } from '../types';
 import { bufferToBase64 } from '../utils/fileUtils';
 import { createKiCanvasViewerHtml, createViewerErrorHtml, kicanvasUri } from './viewerHtml';
 
-const MAX_INLINE_INTERACTIVE_BYTES = 2 * 1024 * 1024;
+const PROGRESS_INLINE_WARNING_BYTES = 1 * 1024 * 1024;
+const MAX_INLINE_INTERACTIVE_BYTES = 10 * 1024 * 1024;
 
 interface ViewerPayload {
   fileName: string;
   base64: string;
   disabledReason: string;
   theme: string;
+  metadata?: ViewerMetadata | undefined;
   restoreState?: ViewerState;
 }
 
@@ -25,6 +27,7 @@ interface CachedFilePayload {
   base64: string;
   disabledReason: string;
   mtimeMs: number;
+  metadata?: ViewerMetadata | undefined;
 }
 
 interface PanelInfo {
@@ -49,6 +52,7 @@ export abstract class BaseKiCanvasEditorProvider
   private readonly disposables: vscode.Disposable[] = [];
   private readonly refreshDebounce = new Map<string, NodeJS.Timeout>();
   private readonly fileCache = new Map<string, CachedFilePayload>();
+  private readonly stateByUri = new Map<string, ViewerState>();
   private theme = vscode.workspace.getConfiguration().get<string>(SETTINGS.viewerTheme, 'kicad');
 
   constructor(protected readonly context: vscode.ExtensionContext) {
@@ -85,10 +89,18 @@ export abstract class BaseKiCanvasEditorProvider
         type: 'setTheme',
         payload: {
           theme,
-          restoreState: info.state
+          restoreState: info.state ?? this.stateByUri.get(info.uri.toString())
         }
       });
     }
+  }
+
+  getViewerState(uri: vscode.Uri): ViewerState | undefined {
+    return this.stateByUri.get(uri.toString());
+  }
+
+  protected buildViewerMetadata(_uri: vscode.Uri, _text: string): ViewerMetadata | undefined {
+    return undefined;
   }
 
   async openCustomDocument(uri: vscode.Uri): Promise<vscode.CustomDocument> {
@@ -141,6 +153,36 @@ export abstract class BaseKiCanvasEditorProvider
             const info = this.panelInfo.get(webviewPanel);
             if (info) {
               info.state = message.payload as ViewerState;
+              this.stateByUri.set(document.uri.toString(), info.state);
+            }
+          }
+          if (message.type === 'selectionChanged') {
+            const info = this.panelInfo.get(webviewPanel);
+            if (info) {
+              info.state = {
+                ...(info.state ?? { zoom: 1, grid: false, theme: this.theme }),
+                ...(message.payload as Partial<ViewerState>)
+              };
+              this.stateByUri.set(document.uri.toString(), info.state);
+            }
+          }
+          if (message.type === 'exportPng' && typeof message.payload?.dataUrl === 'string') {
+            await this.exportPngSnapshot(document.uri, String(message.payload.dataUrl));
+          }
+          if (message.type === 'exportSvg') {
+            await vscode.commands.executeCommand(COMMANDS.exportViewerSvg, document.uri);
+          }
+          if (message.type === 'componentSelected') {
+            const info = this.panelInfo.get(webviewPanel);
+            if (info) {
+              info.state = {
+                ...(info.state ?? { zoom: 1, grid: false, theme: this.theme }),
+                selectedReference:
+                  typeof message.payload?.reference === 'string'
+                    ? String(message.payload.reference)
+                    : info.state?.selectedReference
+              };
+              this.stateByUri.set(document.uri.toString(), info.state);
             }
           }
         })
@@ -198,6 +240,7 @@ export abstract class BaseKiCanvasEditorProvider
       base64: payload.base64,
       disabledReason: payload.disabledReason,
       theme: payload.theme,
+      ...(payload.metadata ? { metadata: payload.metadata } : {}),
       ...(payload.restoreState ? { restoreState: payload.restoreState } : {})
     });
   }
@@ -208,22 +251,36 @@ export abstract class BaseKiCanvasEditorProvider
     const stat = fs.statSync(uri.fsPath);
     const cached = this.fileCache.get(cacheKey);
     if (cached && cached.mtimeMs === stat.mtimeMs) {
+      const restoreState = this.stateByUri.get(cacheKey);
       return {
         fileName,
         base64: cached.base64,
         disabledReason: cached.disabledReason,
-        theme: this.theme
+        theme: this.theme,
+        ...(cached.metadata ? { metadata: cached.metadata } : {}),
+        ...(restoreState ? { restoreState } : {})
       };
     }
 
-    const bytes = await vscode.workspace.fs.readFile(uri);
+    const bytes =
+      stat.size > PROGRESS_INLINE_WARNING_BYTES
+        ? await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: `Loading ${fileName}`
+            },
+            async () => vscode.workspace.fs.readFile(uri)
+          )
+        : await vscode.workspace.fs.readFile(uri);
+    const text = Buffer.from(bytes).toString('utf8');
     const canInline = bytes.byteLength <= MAX_INLINE_INTERACTIVE_BYTES;
     const nextPayload: CachedFilePayload = {
       base64: canInline ? bufferToBase64(bytes) : '',
       disabledReason: canInline
         ? ''
-        : `Interactive render is disabled for files larger than ${MAX_INLINE_INTERACTIVE_BYTES} bytes.`,
-      mtimeMs: stat.mtimeMs
+        : `Interactive render is disabled for files larger than ${(MAX_INLINE_INTERACTIVE_BYTES / 1024 / 1024).toFixed(0)} MB. Metadata is still available in the side panel.`,
+      mtimeMs: stat.mtimeMs,
+      metadata: this.buildViewerMetadata(uri, text)
     };
     this.fileCache.set(cacheKey, nextPayload);
 
@@ -231,7 +288,12 @@ export abstract class BaseKiCanvasEditorProvider
       fileName,
       base64: nextPayload.base64,
       disabledReason: nextPayload.disabledReason,
-      theme: this.theme
+      theme: this.theme,
+      ...(nextPayload.metadata ? { metadata: nextPayload.metadata } : {}),
+      ...(() => {
+        const restoreState = this.stateByUri.get(cacheKey);
+        return restoreState ? { restoreState } : {};
+      })()
     };
   }
 
@@ -246,7 +308,8 @@ export abstract class BaseKiCanvasEditorProvider
     this.panels.set(key, set);
     this.panelInfo.set(panel, {
       uri,
-      pendingRefresh: false
+      pendingRefresh: false,
+      state: this.stateByUri.get(uri.toString())
     });
   }
 
@@ -264,5 +327,23 @@ export abstract class BaseKiCanvasEditorProvider
       clearTimeout(info.releaseTimer);
     }
     this.panelInfo.delete(panel);
+  }
+
+  private async exportPngSnapshot(uri: vscode.Uri, dataUrl: string): Promise<void> {
+    const saveUri = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file(
+        path.join(path.dirname(uri.fsPath), `${path.parse(uri.fsPath).name}-viewer.png`)
+      ),
+      filters: {
+        PNG: ['png']
+      }
+    });
+    if (!saveUri) {
+      return;
+    }
+
+    const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
+    await vscode.workspace.fs.writeFile(saveUri, Buffer.from(base64, 'base64'));
+    void vscode.window.showInformationMessage(`Saved viewer snapshot to ${path.basename(saveUri.fsPath)}.`);
   }
 }

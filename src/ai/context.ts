@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DiagnosticSummary } from '../types';
 import type { KiCadContext } from './prompts';
+import { findSiblingProjectFile } from '../utils/pathUtils';
 
 export interface ActiveAiContext {
   fileName: string | undefined;
@@ -61,10 +62,11 @@ function resolveProjectContext(fileName: string | undefined): KiCadContext {
     return {};
   }
 
-  const projectFile = findProjectFile(fileName);
+  const projectFile = findSiblingProjectFile(fileName);
   const projectName = projectFile ? path.parse(projectFile).name : undefined;
   const kicadVersion = readProjectVersion(projectFile);
   const boardLayers = fileName.endsWith('.kicad_pcb') ? readBoardLayers(fileName) : undefined;
+  const activeVariant = readActiveVariant(projectFile);
 
   const result: KiCadContext = {};
   if (projectName) {
@@ -76,22 +78,10 @@ function resolveProjectContext(fileName: string | undefined): KiCadContext {
   if (typeof boardLayers === 'number') {
     result.boardLayers = boardLayers;
   }
+  if (activeVariant) {
+    result.activeVariant = activeVariant;
+  }
   return result;
-}
-
-function findProjectFile(fileName: string): string | undefined {
-  const sibling = path.join(path.dirname(fileName), `${path.parse(fileName).name}.kicad_pro`);
-  if (fs.existsSync(sibling)) {
-    return sibling;
-  }
-
-  try {
-    const entries = fs.readdirSync(path.dirname(fileName));
-    const projectEntry = entries.find((entry) => entry.endsWith('.kicad_pro'));
-    return projectEntry ? path.join(path.dirname(fileName), projectEntry) : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 function readProjectVersion(projectFile: string | undefined): string | undefined {
@@ -117,6 +107,24 @@ function readBoardLayers(boardFile: string): number | undefined {
     const raw = fs.readFileSync(boardFile, 'utf8');
     const matches = [...raw.matchAll(/\(\s*(\d+)\s+"[^"]+"\s+(?:signal|jumper|mixed|power)\s*\)/g)];
     return matches.length || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readActiveVariant(projectFile: string | undefined): string | undefined {
+  if (!projectFile || !fs.existsSync(projectFile)) {
+    return undefined;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(projectFile, 'utf8')) as {
+      activeVariant?: string;
+      variants?: Array<{ name?: string; isDefault?: boolean }>;
+    };
+    if (typeof parsed.activeVariant === 'string') {
+      return parsed.activeVariant;
+    }
+    return parsed.variants?.find((variant) => variant.isDefault)?.name;
   } catch {
     return undefined;
   }

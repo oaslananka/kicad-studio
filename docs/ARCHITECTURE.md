@@ -1,43 +1,78 @@
 # KiCad Studio Architecture
 
-## Extension Lifecycle
+## Overview
 
-`activate()` composes the parser, CLI services, viewers, tree providers, AI providers, and commands.  
-The extension then registers diagnostics, custom editors, sidebar views, and task providers before refreshing context keys and status bar state.
+KiCad Studio is a VS Code extension that combines three layers:
 
-## Service Graph
+1. KiCad-aware document parsing and CLI orchestration.
+2. Webview-based viewers and side panels.
+3. Optional AI and MCP-assisted workflows.
 
-- `extension.ts` composes everything.
-- `KiCadCliDetector` feeds `KiCadCliRunner`.
-- `KiCadCliRunner` feeds export, DRC/ERC, and preview workflows.
-- `SExpressionParser` feeds BOM parsing, symbol extraction, diagnostics, diffing, and document caching.
-- `AIProviderRegistry` resolves Claude/OpenAI providers for `ErrorAnalyzer`, `CircuitExplainer`, and `KiCadChatPanel`.
-- `KiCadLibraryIndexer` feeds `LibrarySearchProvider`.
+The extension is activated from KiCad project, schematic, PCB, jobset, or DRC rule files and composes its runtime in `src/extension.ts`.
+
+## Core Runtime
+
+- `src/extension.ts` wires activation, commands, providers, diagnostics, context keys, and status bars.
+- `src/language/sExpressionParser.ts` is the shared parser used by diagnostics, BOM parsing, DRC rule parsing, and metadata extraction.
+- `src/cli/` contains `kicad-cli` detection, execution, exports, checks, and import helpers.
+- `src/statusbar/kicadStatusBar.ts` summarizes CLI, DRC/ERC, AI, and MCP state.
+
+## Viewer Layer
+
+- `BaseKiCanvasEditorProvider` handles file loading, caching, large-file behavior, viewer state restore, and webview message plumbing.
+- `SchematicEditorProvider` and `PcbEditorProvider` specialize the shared provider.
+- `viewerHtml.ts` renders the common KiCanvas host shell, theme sync, metadata sidebars, export buttons, and lasso/selection events.
+- PCB metadata extraction currently feeds layer visibility controls and tuning profile summaries.
+
+## Project And Sidebar Providers
+
+- `KiCadProjectTreeProvider` discovers project assets.
+- `BomViewProvider` and `NetlistViewProvider` present secondary data views beside the main editors.
+- `VariantProvider` reads/writes KiCad project variant metadata and exposes active variant switching.
+- `DrcRulesProvider` parses `.kicad_dru` content into a tree view for fast rule navigation.
+- `FixQueueProvider` surfaces MCP-supplied suggested fixes.
+
+## AI Layer
+
+- `AIProviderRegistry` resolves the configured provider and model selection.
+- Claude and OpenAI providers call their remote APIs from the extension host only.
+- Copilot and Gemini providers use the VS Code Language Model API when available.
+- `KiCadChatPanel` is the multi-turn chat UI and can render MCP tool suggestions embedded in assistant replies.
+- Prompt construction in `src/ai/prompts.ts` is KiCad 10-aware and injects active variant / MCP context when available.
+
+## MCP Layer
+
+- `McpDetector` locates `kicad-mcp-pro` and can generate `.vscode/mcp.json`.
+- `McpClient` handles HTTP JSON-RPC calls, tool previews, tool execution, and fix queue reads.
+- `ContextBridge` debounces and pushes studio context to MCP.
+- `DesignIntentPanel` is a user-friendly wrapper around design-intent MCP tools.
 
 ## Data Flow
 
-When a `.kicad_sch` or `.kicad_pcb` file is opened, the extension parses it with `SExpressionParser`, updates diagnostics, refreshes context keys, and keeps a cached AST in `KiCadDocumentStore`.  
-Viewer providers then send the file payload to a webview that initializes KiCanvas locally.
+### File Open
 
-## AI Flow
+1. VS Code opens a KiCad document.
+2. The extension parses it and updates diagnostics/context state.
+3. The relevant custom editor loads the file into a CSP-locked webview.
+4. Viewer metadata is extracted and passed into sidebar sections.
 
-Commands route through `AIProviderRegistry`, which constructs the configured provider using SecretStorage-backed API keys.  
-Single-shot analysis uses `analyze()`, while the chat panel uses `analyzeStream()` for token-by-token updates.  
-The webview never talks to Anthropic or OpenAI directly; all network calls stay inside the extension host.
+### DRC/ERC
 
-## Webview Architecture
+1. A check command runs through `KiCadCliRunner`.
+2. JSON output is normalized into `vscode.Diagnostic[]`.
+3. The Problems panel and status bar update.
+4. Latest DRC context can be pushed into AI and MCP flows.
 
-Webviews use a strict CSP nonce pattern and local assets under `media/`.  
-Extension host and webview communicate with `postMessage()` in both directions for refresh requests, state restore, selection changes, and streaming AI output.
+### AI + MCP
 
-## CLI Integration
+1. Active editor context is collected through `getActiveAiContext()`.
+2. KiCad 10 and active-variant details are merged into the system prompt.
+3. If MCP is connected, the assistant may emit `mcp` fenced JSON blocks.
+4. The chat UI can preview and optionally apply those tool calls.
 
-`KiCadCliDetector` locates `kicad-cli`, then `KiCadCliRunner` spawns commands with progress reporting and duplicate-request coalescing.  
-DRC/ERC results are normalized into `vscode.Diagnostic[]`, while exports write files into the configured fabrication output directory.
+## CI/CD
 
-## Security Notes
-
-- API keys live in VS Code SecretStorage, not plaintext settings.
-- Webviews use local-only assets and a CSP nonce pattern.
-- AI/network access is extension-host only.
-- Viewer rendering is local and does not upload KiCad files.
+- Azure DevOps is the primary CI/CD platform for this repository.
+- `azure-pipelines-ci.yml` runs validation and packages a VSIX artifact.
+- `azure-pipelines-publish.yml` is approval-gated for Marketplace publishing.
+- GitHub Actions remain manual fallback workflows only.

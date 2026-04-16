@@ -1,6 +1,8 @@
 export class KiCadCliNotFoundError extends Error {
   constructor() {
-    super('kicad-cli not found. Install KiCad or configure kicadstudio.kicadCliPath.');
+    super(
+      'kicad-cli not found. Install KiCad or configure the kicadstudio.kicadCliPath setting.'
+    );
     this.name = 'KiCadCliNotFoundError';
   }
 }

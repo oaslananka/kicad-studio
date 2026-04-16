@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { AI_SECRET_KEY, SETTINGS } from '../constants';
 import type { AIProvider } from '../types';
 import { ClaudeProvider } from './claudeProvider';
+import { CopilotProvider, GeminiProvider } from './copilotProvider';
 import { OpenAIProvider } from './openaiProvider';
 import {
   DEFAULT_CLAUDE_MODEL,
@@ -27,8 +28,19 @@ export class AIProviderRegistry {
   }
 
   async getProviderForSelection(selected: string, model = ''): Promise<AIProvider | undefined> {
+    if (selected === 'none') {
+      return undefined;
+    }
+
+    if (selected === 'copilot') {
+      return new CopilotProvider();
+    }
+    if (selected === 'gemini') {
+      return new GeminiProvider();
+    }
+
     const apiKey = await this.context.secrets.get(AI_SECRET_KEY);
-    if (!apiKey || selected === 'none') {
+    if (!apiKey) {
       return undefined;
     }
 

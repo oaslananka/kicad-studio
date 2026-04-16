@@ -13,7 +13,7 @@ export function getCliCandidates(platform = process.platform, configuredPath = '
   }
 
   if (platform === 'win32') {
-    const programFiles = process.env.PROGRAMFILES ?? 'C:\\Program Files';
+    const programFiles = process.env['PROGRAMFILES'] ?? 'C:\\Program Files';
     const programFilesX86 = process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)';
     for (const version of ['10.0', '10', '9.0', '9', '8.0', '8', '7.0', '7', '6.0', '6']) {
       candidates.push(path.join(programFiles, 'KiCad', version, 'bin', 'kicad-cli.exe'));
@@ -72,13 +72,22 @@ export class KiCadCliDetector {
     }
 
     if (notifyOnMissing) {
-      const action = 'Open Settings';
-      const selected = await vscode.window.showWarningMessage(
-        'kicad-cli not found. Install KiCad or set the executable path in KiCad Studio settings.',
-        action
+      const selected = await vscode.window.showErrorMessage(
+        'KiCad CLI (kicad-cli) was not found.',
+        'Download KiCad',
+        'Set Manual Path',
+        'Help'
       );
-      if (selected === action) {
+      if (selected === 'Download KiCad') {
+        await vscode.env.openExternal(vscode.Uri.parse('https://www.kicad.org/download/'));
+      } else if (selected === 'Set Manual Path') {
         await vscode.commands.executeCommand('workbench.action.openSettings', SETTINGS.cliPath);
+      } else if (selected === 'Help') {
+        await vscode.env.openExternal(
+          vscode.Uri.parse(
+            'https://github.com/oaslananka/kicad-studio/blob/main/docs/installation.md'
+          )
+        );
       }
     }
 

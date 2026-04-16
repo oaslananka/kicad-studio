@@ -6,6 +6,9 @@ export const DIAGNOSTIC_COLLECTION_NAME = 'kicad';
 export const TREE_VIEW_ID = 'kicadstudio.projectTree';
 export const BOM_VIEW_ID = 'kicadstudio.bomView';
 export const NETLIST_VIEW_ID = 'kicadstudio.netlistView';
+export const VARIANTS_VIEW_ID = 'kicadstudio.variants';
+export const FIX_QUEUE_VIEW_ID = 'kicadstudio.fixQueue';
+export const DRC_RULES_VIEW_ID = 'kicadstudio.drcRules';
 export const SCHEMATIC_EDITOR_VIEW_TYPE = 'kicadstudio.schematicViewer';
 export const PCB_EDITOR_VIEW_TYPE = 'kicadstudio.pcbViewer';
 export const LARGE_FILE_BYTES = 5 * 1024 * 1024;
@@ -25,7 +28,8 @@ export const KICAD_LANGUAGES = [
   'kicad-pcb',
   'kicad-symbol',
   'kicad-footprint',
-  'kicad-project'
+  'kicad-project',
+  'kicad-drc'
 ] as const;
 export const KICAD_FILE_EXTENSIONS = [
   '.kicad_pro',
@@ -33,7 +37,8 @@ export const KICAD_FILE_EXTENSIONS = [
   '.kicad_pcb',
   '.kicad_sym',
   '.kicad_mod',
-  '.kicad_jobset'
+  '.kicad_jobset',
+  '.kicad_dru'
 ] as const;
 export const COMMANDS = {
   showStatusMenu: 'kicadstudio.showStatusMenu',
@@ -80,14 +85,38 @@ export const COMMANDS = {
   runExportPreset: 'kicadstudio.runExportPreset',
   setOctopartApiKey: 'kicadstudio.setOctopartApiKey',
   setAiApiKey: 'kicadstudio.setAiApiKey',
-  clearSecrets: 'kicadstudio.clearSecrets'
+  clearSecrets: 'kicadstudio.clearSecrets',
+  export3DPdf: 'kicadstudio.export3DPdf',
+  setupMcpIntegration: 'kicadstudio.setupMcpIntegration',
+  openDesignIntent: 'kicadstudio.openDesignIntent',
+  refreshFixQueue: 'kicadstudio.refreshFixQueue',
+  applyFixQueueItem: 'kicadstudio.applyFixQueueItem',
+  createVariant: 'kicadstudio.variant.create',
+  setActiveVariant: 'kicadstudio.variant.setActive',
+  diffVariantBom: 'kicadstudio.variant.diffBom',
+  refreshVariants: 'kicadstudio.variant.refresh',
+  revealDrcRule: 'kicadstudio.drcRule.reveal',
+  addDrcRuleWithMcp: 'kicadstudio.drcRule.addWithMcp',
+  exportViewerSnapshot: 'kicadstudio.exportViewerSnapshot',
+  exportViewerSvg: 'kicadstudio.exportViewerSvg',
+  importPads: 'kicadstudio.importPads',
+  importAltium: 'kicadstudio.importAltium',
+  importEagle: 'kicadstudio.importEagle',
+  importCadstar: 'kicadstudio.importCadstar',
+  importFabmaster: 'kicadstudio.importFabmaster',
+  importPcad: 'kicadstudio.importPcad',
+  importSolidworks: 'kicadstudio.importSolidworks'
 } as const;
 export const CONTEXT_KEYS = {
   hasProject: 'kicadstudio.hasProject',
   schematicOpen: 'kicadstudio.schematicOpen',
   pcbOpen: 'kicadstudio.pcbOpen',
   aiEnabled: 'kicadstudio.aiEnabled',
-  aiHealthy: 'kicadstudio.aiHealthy'
+  aiHealthy: 'kicadstudio.aiHealthy',
+  kicad10Plus: 'kicadstudio.kicad10Plus',
+  mcpAvailable: 'kicadstudio.mcpAvailable',
+  mcpConnected: 'kicadstudio.mcpConnected',
+  hasVariants: 'kicadstudio.hasVariants'
 } as const;
 export const SETTINGS = {
   cliPath: 'kicadstudio.kicadCliPath',
@@ -110,7 +139,13 @@ export const SETTINGS = {
   aiOpenAIApiMode: 'kicadstudio.ai.openaiApiMode',
   logLevel: 'kicadstudio.logLevel',
   autoRunDRC: 'kicadstudio.drc.autoRunOnSave',
-  autoRunERC: 'kicadstudio.erc.autoRunOnSave'
+  autoRunERC: 'kicadstudio.erc.autoRunOnSave',
+  mcpAutoDetect: 'kicadstudio.mcp.autoDetect',
+  mcpEndpoint: 'kicadstudio.mcp.endpoint',
+  mcpPushContext: 'kicadstudio.mcp.pushContext',
+  viewerSyncTheme: 'kicadstudio.viewer.syncThemeWithVscode',
+  viewerEnableLayerPanel: 'kicadstudio.viewer.enableLayerPanel',
+  viewerEnableSnapshotExport: 'kicadstudio.viewer.enableSnapshotExport'
 } as const;
 export const DEFAULT_BOM_FIELDS = [
   'Reference',
@@ -137,13 +172,15 @@ export const CLI_CAPABILITY_COMMANDS = {
   ipcd356: ['pcb', 'export', 'ipcd356'],
   dxf: ['pcb', 'export', 'dxf'],
   pos: ['pcb', 'export', 'pos'],
+  pdf3d: ['pcb', 'export', '3dpdf'],
   fpSvg: ['fp', 'export', 'svg'],
   symSvg: ['sym', 'export', 'svg'],
   jobset: ['jobset', 'run'],
   bom: ['sch', 'export', 'bom'],
   netlist: ['sch', 'export', 'netlist'],
   drc: ['pcb', 'drc'],
-  erc: ['sch', 'erc']
+  erc: ['sch', 'erc'],
+  pcbImport: ['pcb', 'import']
 } as const;
 export const DOCUMENT_SELECTOR: vscode.DocumentSelector = KICAD_LANGUAGES.map((language) => ({
   language

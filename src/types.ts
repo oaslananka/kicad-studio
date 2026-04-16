@@ -35,6 +35,15 @@ export interface ViewerState {
   grid: boolean;
   theme: string;
   selectedReference?: string | undefined;
+  selectedArea?:
+    | {
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+      }
+    | undefined;
+  activeLayers?: string[] | undefined;
 }
 
 export interface ViewerInboundMessage {
@@ -45,7 +54,8 @@ export interface ViewerInboundMessage {
     | 'highlight'
     | 'setLayers'
     | 'showDiff'
-    | 'showMessage';
+    | 'showMessage'
+    | 'setMetadata';
   payload?: Record<string, unknown>;
 }
 
@@ -56,8 +66,33 @@ export interface ViewerOutboundMessage {
     | 'openInKiCad'
     | 'status'
     | 'error'
-    | 'themeChanged';
+    | 'themeChanged'
+    | 'viewerState'
+    | 'requestRefresh'
+    | 'exportPng'
+    | 'exportSvg'
+    | 'selectionChanged';
   payload?: Record<string, unknown>;
+}
+
+export interface ViewerLayerInfo {
+  name: string;
+  visible: boolean;
+  kind?: string | undefined;
+}
+
+export interface TuningProfile {
+  name: string;
+  layer?: string | undefined;
+  impedance?: string | undefined;
+  propagationSpeed?: string | undefined;
+  raw?: string | undefined;
+}
+
+export interface ViewerMetadata {
+  layers?: ViewerLayerInfo[] | undefined;
+  tuningProfiles?: TuningProfile[] | undefined;
+  notes?: string[] | undefined;
 }
 
 export interface BomEntry {
@@ -195,6 +230,12 @@ export interface AIProvider {
   isConfigured(): boolean;
 }
 
+export interface McpToolCall {
+  name: string;
+  arguments: Record<string, unknown>;
+  preview?: string | undefined;
+}
+
 export interface ParserError {
   message: string;
   line: number;
@@ -207,4 +248,52 @@ export interface SchemaNodeDefinition {
   tag: string;
   description: string;
   children?: string[] | undefined;
+}
+
+export interface VariantOverride {
+  reference: string;
+  enabled: boolean;
+  valueOverride?: string | undefined;
+  footprintOverride?: string | undefined;
+}
+
+export interface KiCadVariant {
+  name: string;
+  isDefault: boolean;
+  componentOverrides: VariantOverride[];
+}
+
+export interface McpInstallStatus {
+  found: boolean;
+  command?: 'uvx' | 'kicad-mcp-pro' | undefined;
+  version?: string | undefined;
+  source?: 'uvx' | 'global' | 'pip' | 'none' | undefined;
+}
+
+export interface StudioContext {
+  activeFile: string | undefined;
+  fileType: 'schematic' | 'pcb' | 'other';
+  drcErrors: string[];
+  selectedNet?: string | undefined;
+  selectedReference?: string | undefined;
+  selectedArea?:
+    | {
+        x1: number;
+        y1: number;
+        x2: number;
+        y2: number;
+      }
+    | undefined;
+  activeVariant?: string | undefined;
+  mcpConnected?: boolean | undefined;
+}
+
+export interface FixItem {
+  id: string;
+  description: string;
+  severity: 'error' | 'warning' | 'info';
+  tool: string;
+  args: Record<string, unknown>;
+  status: 'pending' | 'applying' | 'done' | 'failed';
+  preview?: string | undefined;
 }

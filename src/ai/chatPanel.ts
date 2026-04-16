@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { AI_CHAT_MAX_HISTORY, SETTINGS } from '../constants';
 import { AIStreamAbortedError } from '../errors';
+import { McpClient } from '../mcp/mcpClient';
+import { extractMcpToolCalls } from '../mcp/toolCallParser';
+import type { McpToolCall } from '../types';
 import { Logger } from '../utils/logger';
 import { AIProviderRegistry } from './aiProvider';
 import { getActiveAiContext } from './context';
@@ -10,14 +13,24 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  toolCalls?: McpToolCall[];
+  applied?: boolean;
 }
 
 interface ChatPanelMessage {
-  type: 'send' | 'cancel' | 'clear' | 'ready' | 'selectionChanged';
+  type:
+    | 'send'
+    | 'cancel'
+    | 'clear'
+    | 'ready'
+    | 'selectionChanged'
+    | 'applyToolCalls'
+    | 'ignoreToolCalls';
   prompt?: string;
   context?: string;
   provider?: string;
   model?: string;
+  timestamp?: number;
 }
 
 const CHAT_HISTORY_KEY = 'kicadstudio.aiChat.history';
@@ -41,7 +54,8 @@ export class KiCadChatPanel implements vscode.Disposable {
   static createOrShow(
     context: vscode.ExtensionContext,
     providers: AIProviderRegistry,
-    logger: Logger
+    logger: Logger,
+    mcpClient?: McpClient
   ): KiCadChatPanel {
     if (KiCadChatPanel.instance) {
       KiCadChatPanel.instance.panel.reveal(vscode.ViewColumn.Beside);
@@ -60,7 +74,7 @@ export class KiCadChatPanel implements vscode.Disposable {
       }
     );
 
-    const instance = new KiCadChatPanel(context, panel, providers, logger);
+    const instance = new KiCadChatPanel(context, panel, providers, logger, mcpClient);
     KiCadChatPanel.instance = instance;
     context.subscriptions.push(instance);
     return instance;
@@ -70,7 +84,8 @@ export class KiCadChatPanel implements vscode.Disposable {
     private readonly context: vscode.ExtensionContext,
     panel: vscode.WebviewPanel,
     private readonly providers: AIProviderRegistry,
-    private readonly logger: Logger
+    private readonly logger: Logger,
+    private readonly mcpClient?: McpClient
   ) {
     this.panel = panel;
     const selection = providers.getSelection();
@@ -126,6 +141,21 @@ export class KiCadChatPanel implements vscode.Disposable {
       this.history.length = 0;
       await this.persistHistory();
       await this.postHydrate();
+      return;
+    }
+
+    if (message.type === 'applyToolCalls' && typeof message.timestamp === 'number') {
+      await this.applyToolCalls(message.timestamp);
+      return;
+    }
+
+    if (message.type === 'ignoreToolCalls' && typeof message.timestamp === 'number') {
+      const target = this.history.find((entry) => entry.timestamp === message.timestamp);
+      if (target) {
+        target.applied = true;
+        await this.persistHistory();
+        await this.panel.webview.postMessage({ type: 'assistantReplace', message: target });
+      }
       return;
     }
 
@@ -187,7 +217,11 @@ export class KiCadChatPanel implements vscode.Disposable {
     ]
       .filter(Boolean)
       .join('\n\n');
-    const systemPrompt = buildSystemPrompt(aiLanguage, activeContext.projectContext);
+    const mcpState = this.mcpClient ? await this.mcpClient.testConnection() : undefined;
+    const systemPrompt = buildSystemPrompt(aiLanguage, {
+      ...activeContext.projectContext,
+      mcpConnected: mcpState?.connected
+    });
 
     this.busy = true;
     this.abortController = new AbortController();
@@ -212,12 +246,12 @@ export class KiCadChatPanel implements vscode.Disposable {
         );
       } else {
         assistantMessage.content = await provider.analyze(prompt, context, systemPrompt);
-        await this.panel.webview.postMessage({
-          type: 'assistantReplace',
-          timestamp: assistantMessage.timestamp,
-          text: assistantMessage.content
-        });
       }
+      assistantMessage.toolCalls = extractMcpToolCalls(assistantMessage.content);
+      await this.panel.webview.postMessage({
+        type: 'assistantReplace',
+        message: assistantMessage
+      });
       await this.postStatus(`Response complete from ${provider.name}.`);
     } catch (error) {
       if (error instanceof AIStreamAbortedError || this.abortController.signal.aborted) {
@@ -233,8 +267,7 @@ export class KiCadChatPanel implements vscode.Disposable {
         assistantMessage.content = message;
         await this.panel.webview.postMessage({
           type: 'assistantReplace',
-          timestamp: assistantMessage.timestamp,
-          text: assistantMessage.content
+          message: assistantMessage
         });
         this.logger.error('AI chat request failed', error);
         void vscode.window.showErrorMessage(message);
@@ -298,6 +331,48 @@ export class KiCadChatPanel implements vscode.Disposable {
 
   private async postStatus(text: string): Promise<void> {
     await this.panel.webview.postMessage({ type: 'status', text });
+  }
+
+  private async applyToolCalls(timestamp: number): Promise<void> {
+    const target = this.history.find((entry) => entry.timestamp === timestamp);
+    if (!target?.toolCalls?.length) {
+      return;
+    }
+    if (!this.mcpClient) {
+      void vscode.window.showWarningMessage('MCP client is not available in this session.');
+      return;
+    }
+
+    const previews = await Promise.all(
+      target.toolCalls.map(async (toolCall) => {
+        try {
+          return `${toolCall.name}: ${await this.mcpClient?.previewToolCall(toolCall)}`;
+        } catch {
+          return `${toolCall.name}: preview unavailable`;
+        }
+      })
+    );
+
+    const choice = await vscode.window.showInformationMessage(
+      `Apply ${target.toolCalls.length} MCP tool call(s)?\n\n${previews.join('\n')}`,
+      'Apply',
+      'Cancel'
+    );
+    if (choice !== 'Apply') {
+      return;
+    }
+
+    for (const toolCall of target.toolCalls) {
+      await this.mcpClient.callTool(toolCall.name, toolCall.arguments);
+    }
+
+    target.applied = true;
+    await this.persistHistory();
+    await this.panel.webview.postMessage({
+      type: 'assistantReplace',
+      message: target
+    });
+    void vscode.window.showInformationMessage('Suggested MCP changes were applied.');
   }
 
   private buildHtml(): string {
@@ -421,6 +496,17 @@ export class KiCadChatPanel implements vscode.Disposable {
       color: var(--muted);
       white-space: pre-wrap;
     }
+    .tool-preview {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      gap: 8px;
+    }
+    .tool-list {
+      color: var(--muted);
+      font-size: 12px;
+    }
     .empty {
       color: var(--muted);
       text-align: center;
@@ -439,6 +525,8 @@ export class KiCadChatPanel implements vscode.Disposable {
         <option value="none">Disabled</option>
         <option value="claude">Claude</option>
         <option value="openai">OpenAI</option>
+        <option value="copilot">GitHub Copilot</option>
+        <option value="gemini">Gemini</option>
       </select>
       <input id="model" type="text" placeholder="Model override (optional)" />
       <button id="clear" class="secondary" type="button">Sohbeti Temizle</button>
@@ -510,7 +598,7 @@ export class KiCadChatPanel implements vscode.Disposable {
         container = document.createElement('article');
         container.className = 'message ' + message.role;
         container.dataset.timestamp = String(message.timestamp);
-        container.innerHTML = '<div class="meta"></div><div class="content"></div>';
+        container.innerHTML = '<div class="meta"></div><div class="content"></div><div class="tools"></div>';
         messageMap.set(message.timestamp, container);
         messagesEl.appendChild(container);
       }
@@ -519,6 +607,30 @@ export class KiCadChatPanel implements vscode.Disposable {
         message.role === 'assistant'
           ? window.KiCadChatMarkdown.renderMarkdown(message.content || '')
           : '<p>' + window.KiCadChatMarkdown.sanitizeHtml(message.content || '') + '</p>';
+      const toolsEl = container.querySelector('.tools');
+      const toolCalls = Array.isArray(message.toolCalls) ? message.toolCalls : [];
+      if (message.role === 'assistant' && toolCalls.length && !message.applied) {
+        const toolNames = toolCalls
+          .map((tool) => '<code>' + window.KiCadChatMarkdown.sanitizeHtml(tool.name) + '</code>')
+          .join(', ');
+        toolsEl.innerHTML =
+          '<div class="tool-preview">' +
+          '<strong>Suggested MCP changes</strong>' +
+          '<div class="tool-list">' + toolNames + '</div>' +
+          '<div class="composer-actions">' +
+          '<button type="button" data-apply-toolcalls="' + message.timestamp + '">Apply</button>' +
+          '<button type="button" class="secondary" data-ignore-toolcalls="' + message.timestamp + '">Ignore</button>' +
+          '</div>' +
+          '</div>';
+        toolsEl.querySelector('[data-apply-toolcalls]')?.addEventListener('click', () => {
+          vscode.postMessage({ type: 'applyToolCalls', timestamp: message.timestamp });
+        });
+        toolsEl.querySelector('[data-ignore-toolcalls]')?.addEventListener('click', () => {
+          vscode.postMessage({ type: 'ignoreToolCalls', timestamp: message.timestamp });
+        });
+      } else {
+        toolsEl.innerHTML = '';
+      }
       emptyEl.style.display = messageMap.size ? 'none' : 'block';
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
@@ -554,11 +666,7 @@ export class KiCadChatPanel implements vscode.Disposable {
         }
       }
       if (message.type === 'assistantReplace') {
-        renderMessage({
-          role: 'assistant',
-          content: message.text,
-          timestamp: message.timestamp
-        });
+        renderMessage(message.message);
       }
       if (message.type === 'status') {
         statusEl.textContent = message.text || 'Ready';

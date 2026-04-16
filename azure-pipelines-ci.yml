@@ -38,12 +38,18 @@ stages:
             displayName: Install dependencies
           - script: npm run lint
             displayName: Lint
+          - script: npx tsc -p tsconfig.json --noEmit
+            displayName: Type check
           - script: npm run test:unit
             displayName: Unit tests
           - script: npm run build
             displayName: Build extension
           - script: npm test
             displayName: Integration tests
+          - publish: coverage
+            displayName: Publish coverage artifact
+            artifact: coverage-$(Agent.OS)
+            condition: succeededOrFailed()
 
       - job: Package
         displayName: Build VSIX artifact

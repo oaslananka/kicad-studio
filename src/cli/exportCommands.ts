@@ -18,6 +18,7 @@ export type ExportCommandKind =
   | 'export-gerbers-with-drill'
   | 'export-pdf-sch'
   | 'export-pdf-pcb'
+  | 'export-3d-pdf'
   | 'export-svg'
   | 'export-ipc2581'
   | 'export-odb'
@@ -109,6 +110,22 @@ export function buildCliExportCommands(
         inferOutputPath(file, outputDir, '', '.pdf'),
         '--layers',
         'ALL',
+        file
+      ]];
+    case 'export-3d-pdf':
+      return [[
+        'pcb',
+        'export',
+        '3dpdf',
+        '--output',
+        inferOutputPath(file, outputDir, '', '.pdf'),
+        '--include-tracks',
+        '--include-pads',
+        '--include-zones',
+        '--include-inner-copper',
+        '--include-silkscreen',
+        '--include-soldermask',
+        '--subst-models',
         file
       ]];
     case 'export-svg':
@@ -324,6 +341,16 @@ export class KiCadExportService {
 
   async exportPCBPDF(resource?: vscode.Uri): Promise<void> {
     await this.runCliExport('export-pdf-pcb', resource, ['.kicad_pcb'], 'Exporting PCB PDF');
+  }
+
+  async export3DPdf(resource?: vscode.Uri): Promise<void> {
+    const detected = await this.detector.detect(true);
+    const versionMajor = Number(detected?.version.split('.')[0] ?? '0');
+    if (versionMajor < 10 || !(await this.detector.hasCapability('pdf3d'))) {
+      void vscode.window.showWarningMessage('3D PDF export requires KiCad 10 or later.');
+      return;
+    }
+    await this.runCliExport('export-3d-pdf', resource, ['.kicad_pcb'], 'Exporting 3D PDF');
   }
 
   async exportSVG(resource?: vscode.Uri): Promise<void> {

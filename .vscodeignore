@@ -10,6 +10,8 @@ scripts/**
 node_modules/**
 out/**
 coverage/**
+test-results/**
+playwright-report/**
 **/*.ts
 **/*.map
 *.vsix

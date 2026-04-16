@@ -278,9 +278,65 @@ describe('KiCadChatPanel', () => {
     await chat.submitPrompt('boom', 'ctx');
 
     expect(panelMock.panel.webview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'assistantReplace', text: 'fallback reply' })
+      expect.objectContaining({
+        type: 'assistantReplace',
+        message: expect.objectContaining({ content: 'fallback reply' })
+      })
     );
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('provider exploded');
     expect(logger.error).toHaveBeenCalled();
+  });
+
+  it('applies and ignores suggested MCP tool calls from assistant replies', async () => {
+    const context = createExtensionContextMock();
+    const panelMock = createPanelMock();
+    (vscode.window.createWebviewPanel as jest.Mock).mockReturnValue(panelMock.panel);
+    const mcpClient = {
+      testConnection: jest.fn(async () => ({ available: true, connected: true })),
+      previewToolCall: jest.fn(async () => 'Update fabrication profile'),
+      callTool: jest.fn(async () => ({}))
+    };
+    const registry = {
+      getSelection: () => ({ provider: 'openai', model: 'gpt-5.4', openAIApiMode: 'responses' }),
+      getProviderForSelection: jest.fn(async () => ({
+        name: 'OpenAI',
+        isConfigured: () => true,
+        analyze: jest.fn(
+          async () => `Recommended change
+
+\`\`\`mcp
+{"name":"project_set_design_intent","arguments":{"fabricationProfile":"jlcpcb"}}
+\`\`\``
+        ),
+        testConnection: jest.fn(async () => ({ ok: true, latencyMs: 10 }))
+      }))
+    };
+    (vscode.window.showInformationMessage as jest.Mock).mockReset();
+    (vscode.window.showInformationMessage as jest.Mock).mockResolvedValue('Apply');
+
+    const chat = KiCadChatPanel.createOrShow(
+      context as never,
+      registry as never,
+      createLogger() as never,
+      mcpClient as never
+    );
+
+    await chat.submitPrompt('suggest a change', 'ctx');
+    const history = (chat as any).history as Array<{
+      role: string;
+      timestamp: number;
+      toolCalls?: Array<{ name: string }>;
+      applied?: boolean;
+    }>;
+    const assistantMessage = history.find((entry) => entry.role === 'assistant' && entry.toolCalls?.length);
+    expect(assistantMessage?.toolCalls?.[0]?.name).toBe('project_set_design_intent');
+
+    await panelMock.send({ type: 'applyToolCalls', timestamp: assistantMessage?.timestamp });
+    expect(mcpClient.previewToolCall).toHaveBeenCalled();
+
+    await panelMock.send({ type: 'ignoreToolCalls', timestamp: assistantMessage?.timestamp });
+    expect(
+      history.find((entry) => entry.timestamp === assistantMessage?.timestamp)?.applied
+    ).toBe(true);
   });
 });

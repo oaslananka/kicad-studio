@@ -122,4 +122,37 @@ describe.each([
 
     expect((provider as any).panels.has(document.uri.toString())).toBe(false);
   });
+
+  it('extracts PCB metadata for layers and tuning profiles', () => {
+    if (extension !== '.kicad_pcb') {
+      return;
+    }
+
+    const provider = new ContextProvider({
+      extensionUri: vscode.Uri.file('/extension')
+    } as vscode.ExtensionContext) as unknown as PcbEditorProvider;
+    const metadata = (provider as any).buildViewerMetadata(
+      vscode.Uri.file(tempFile),
+      `(kicad_pcb
+        (layers
+          (0 "F.Cu" signal)
+          (31 "B.Cu" signal)
+        )
+        (tuning_profile
+          (name "DDR4")
+          (layer "F.Cu")
+          (impedance "50")
+          (propagation_speed "150")
+        )
+      )`
+    ) as {
+      layers?: Array<{ name: string }>;
+      tuningProfiles?: Array<{ name: string; layer?: string }>;
+    };
+
+    expect(metadata.layers?.map((layer) => layer.name)).toEqual(['F.Cu', 'B.Cu']);
+    expect(metadata.tuningProfiles?.[0]).toEqual(
+      expect.objectContaining({ name: 'DDR4', layer: 'F.Cu' })
+    );
+  });
 });

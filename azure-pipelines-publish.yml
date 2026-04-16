@@ -27,6 +27,8 @@ stages:
             displayName: Install dependencies
           - script: npm run lint
             displayName: Lint
+          - script: npx tsc -p tsconfig.json --noEmit
+            displayName: Type check
           - script: npm run test:unit
             displayName: Unit tests
           - script: npm run build:prod
@@ -59,6 +61,7 @@ stages:
               instructions: |
                 Review the packaged VSIX artifact and approve only when you want to publish KiCad Studio to the VS Code Marketplace.
                 This publish pipeline is intentionally manual and Azure DevOps is the source of truth for release approval.
+                GitHub Actions remain manual fallback workflows only and should not be treated as the release gate.
               onTimeout: reject
 
   - stage: Publish

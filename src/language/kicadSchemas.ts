@@ -77,7 +77,20 @@ export const FOOTPRINT_SCHEMA: SchemaNodeDefinition[] = [
 export const PROJECT_SCHEMA: SchemaNodeDefinition[] = [
   { tag: 'meta', description: 'KiCad project metadata.' },
   { tag: 'board', description: 'PCB project configuration.' },
-  { tag: 'schematic', description: 'Schematic project configuration.' }
+  { tag: 'schematic', description: 'Schematic project configuration.' },
+  { tag: 'variants', description: 'KiCad 10 design variant definitions.' },
+  { tag: 'activeVariant', description: 'Currently active design variant.' }
+];
+
+export const DRC_SCHEMA: SchemaNodeDefinition[] = [
+  { tag: 'design_rules', description: 'Root node for KiCad custom DRC rule files.' },
+  { tag: 'version', description: 'DRC rule file format version.' },
+  { tag: 'rule', description: 'Named graphical design rule.' },
+  { tag: 'condition', description: 'Boolean condition that determines when the rule applies.' },
+  { tag: 'constraint', description: 'Constraint payload enforced by the rule.' },
+  { tag: 'severity', description: 'Severity of the rule outcome.' },
+  { tag: 'layer', description: 'Specific board layer targeted by the rule.' },
+  ...commonNodes
 ];
 
 export const LANGUAGE_SCHEMAS: Record<string, SchemaNodeDefinition[]> = {
@@ -85,7 +98,8 @@ export const LANGUAGE_SCHEMAS: Record<string, SchemaNodeDefinition[]> = {
   'kicad-pcb': PCB_SCHEMA,
   'kicad-symbol': SYMBOL_SCHEMA,
   'kicad-footprint': FOOTPRINT_SCHEMA,
-  'kicad-project': PROJECT_SCHEMA
+  'kicad-project': PROJECT_SCHEMA,
+  'kicad-drc': DRC_SCHEMA
 };
 
 export const KEYWORD_DESCRIPTIONS = Object.fromEntries(

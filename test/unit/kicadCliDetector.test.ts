@@ -212,7 +212,7 @@ describe('KiCadCliDetector', () => {
 
     detector.validateCandidate = jest.fn().mockResolvedValue(undefined);
     detector.findOnPath = jest.fn().mockReturnValue(undefined);
-    (vscode.window.showWarningMessage as jest.Mock).mockResolvedValue('Open Settings');
+    (vscode.window.showErrorMessage as jest.Mock).mockResolvedValue('Set Manual Path');
 
     await detector.detect(true);
 

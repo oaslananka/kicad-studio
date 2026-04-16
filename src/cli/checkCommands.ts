@@ -75,11 +75,15 @@ export class KiCadCheckService {
     const rows = this.collectIssueRows(data);
 
     return rows.map((row) => {
-      const range = this.findClosestRange(ast, Number(row.x ?? 0), Number(row.y ?? 0));
-      const severity = this.toSeverity(String(row.severity ?? 'warning'));
-      const diagnostic = new vscode.Diagnostic(range, String(row.description ?? row.message ?? 'KiCad issue'), severity);
+      const range = this.findClosestRange(ast, Number(row['x'] ?? 0), Number(row['y'] ?? 0));
+      const severity = this.toSeverity(String(row['severity'] ?? 'warning'));
+      const diagnostic = new vscode.Diagnostic(
+        range,
+        String(row['description'] ?? row['message'] ?? 'KiCad issue'),
+        severity
+      );
       diagnostic.source = 'kicad-cli';
-      diagnostic.code = String(row.rule_name ?? row.rule ?? 'rule');
+      diagnostic.code = String(row['rule_name'] ?? row['rule'] ?? 'rule');
       return diagnostic;
     });
   }

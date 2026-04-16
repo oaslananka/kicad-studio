@@ -103,8 +103,8 @@ export class KiCadLibraryIndexer implements vscode.Disposable {
 
   private findSymbolLibraries(): string[] {
     return this.collectFiles('.kicad_sym', [
-      process.env.KICAD_SYMBOL_DIR,
-      process.env.PROGRAMFILES ? path.join(process.env.PROGRAMFILES, 'KiCad') : undefined,
+      process.env['KICAD_SYMBOL_DIR'],
+      process.env['PROGRAMFILES'] ? path.join(process.env['PROGRAMFILES'], 'KiCad') : undefined,
       '/Applications/KiCad/KiCad.app/Contents/SharedSupport/symbols',
       '/usr/share/kicad/symbols',
       '/usr/local/share/kicad/symbols',
@@ -114,8 +114,8 @@ export class KiCadLibraryIndexer implements vscode.Disposable {
 
   private findFootprintLibraries(): string[] {
     return this.collectFiles('.kicad_mod', [
-      process.env.KICAD_FOOTPRINT_DIR,
-      process.env.PROGRAMFILES ? path.join(process.env.PROGRAMFILES, 'KiCad') : undefined,
+      process.env['KICAD_FOOTPRINT_DIR'],
+      process.env['PROGRAMFILES'] ? path.join(process.env['PROGRAMFILES'], 'KiCad') : undefined,
       '/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints',
       '/usr/share/kicad/footprints',
       '/usr/local/share/kicad/footprints',

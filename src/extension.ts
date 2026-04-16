@@ -15,6 +15,7 @@ import { KiCadCliDetector } from './cli/kicadCliDetector';
 import { KiCadCliRunner } from './cli/kicadCliRunner';
 import { ExportPresetStore } from './cli/exportPresets';
 import { KiCadExportService } from './cli/exportCommands';
+import { KiCadImportService } from './cli/importCommands';
 import { ComponentSearchService } from './components/componentSearch';
 import { ComponentSearchCache } from './components/componentSearchCache';
 import { LcscClient } from './components/lcscClient';
@@ -25,24 +26,33 @@ import {
   CONTEXT_KEYS,
   DIAGNOSTIC_COLLECTION_NAME,
   DOCUMENT_SELECTOR,
+  DRC_RULES_VIEW_ID,
   EXTENSION_ID,
+  FIX_QUEUE_VIEW_ID,
   NETLIST_VIEW_ID,
   PCB_EDITOR_VIEW_TYPE,
   SCHEMATIC_EDITOR_VIEW_TYPE,
   SETTINGS,
   TREE_VIEW_ID,
+  VARIANTS_VIEW_ID,
   AI_SECRET_KEY,
   OCTOPART_SECRET_KEY
 } from './constants';
 import { GitDiffDetector } from './git/gitDiffDetector';
 import { KiCadLibraryIndexer } from './library/libraryIndexer';
 import { LibrarySearchProvider } from './library/librarySearchProvider';
+import { DesignIntentPanel } from './mcp/designIntentPanel';
+import { ContextBridge } from './mcp/contextBridge';
+import { McpClient } from './mcp/mcpClient';
+import { McpDetector } from './mcp/mcpDetector';
+import { FixQueueProvider } from './mcp/fixQueueProvider';
 import { KiCadCompletionProvider } from './language/completionProvider';
 import { KiCadDiagnosticsProvider } from './language/diagnosticsProvider';
 import { KiCadHoverProvider } from './language/hoverProvider';
 import { KiCadDocumentStore } from './language/kicadDocumentStore';
 import { SExpressionParser } from './language/sExpressionParser';
 import { KiCadSymbolProvider } from './language/symbolProvider';
+import { DrcRulesProvider, type DrcRuleItem } from './drc/drcRulesProvider';
 import { BomViewProvider } from './providers/bomViewProvider';
 import { DiffEditorProvider } from './providers/diffEditorProvider';
 import { NetlistViewProvider } from './providers/netlistViewProvider';
@@ -51,12 +61,15 @@ import { KiCadProjectTreeProvider } from './providers/projectTreeProvider';
 import { SchematicEditorProvider } from './providers/schematicEditorProvider';
 import { KiCadStatusBar } from './statusbar/kicadStatusBar';
 import { KiCadTaskProvider } from './tasks/kicadTaskProvider';
+import { VariantProvider } from './variants/variantProvider';
 import { Logger } from './utils/logger';
-import type { DiagnosticSummary } from './types';
+import { findFirstWorkspaceFile } from './utils/pathUtils';
+import type { DiagnosticSummary, McpInstallStatus } from './types';
 
 let extensionLogger: Logger | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const activationStartedAt = Date.now();
   const logger = new Logger('KiCad Studio');
   extensionLogger = logger;
   logger.info('Activating KiCad Studio...');
@@ -74,6 +87,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const languageServer = new KiCadDocumentStore(parser);
   const cliDetector = new KiCadCliDetector();
   const cliRunner = new KiCadCliRunner(cliDetector, logger);
+  const importService = new KiCadImportService(cliRunner, logger);
   const statusBar = new KiCadStatusBar(context);
   const bomParser = new BomParser(parser);
   const bomExporter = new BomExporter();
@@ -99,6 +113,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitDiffDetector = new GitDiffDetector(parser);
   const diffEditorProvider = new DiffEditorProvider(context, gitDiffDetector);
   const aiProviders = new AIProviderRegistry(context);
+  const mcpDetector = new McpDetector();
+  const mcpClient = new McpClient(mcpDetector, logger);
+  const contextBridge = new ContextBridge(mcpClient);
+  const variantProvider = new VariantProvider();
+  const fixQueueProvider = new FixQueueProvider(mcpClient);
+  const drcRulesProvider = new DrcRulesProvider(parser);
   const errorAnalyzer = new ErrorAnalyzer(aiProviders, logger);
   const circuitExplainer = new CircuitExplainer(aiProviders, logger);
   const componentSearch = new ComponentSearchService(
@@ -150,6 +170,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       '('
     ),
     vscode.window.registerTreeDataProvider(TREE_VIEW_ID, treeProvider),
+    vscode.window.registerTreeDataProvider(VARIANTS_VIEW_ID, variantProvider),
+    vscode.window.registerTreeDataProvider(FIX_QUEUE_VIEW_ID, fixQueueProvider),
+    vscode.window.registerTreeDataProvider(DRC_RULES_VIEW_ID, drcRulesProvider),
     vscode.window.registerWebviewViewProvider(BOM_VIEW_ID, bomViewProvider),
     vscode.window.registerWebviewViewProvider(NETLIST_VIEW_ID, netlistViewProvider),
     vscode.tasks.registerTaskProvider('kicad', new KiCadTaskProvider())
@@ -178,8 +201,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       void languageServer.parseDocument(document);
       diagnosticsProvider.update(document);
       treeProvider.refresh();
+      variantProvider.refresh();
+      drcRulesProvider.refresh();
       void refreshContexts();
       void runConfiguredSaveChecks(document);
+      void pushStudioContext();
     }),
     vscode.workspace.onDidCloseTextDocument((document) => {
       diagnosticsCollection.delete(document.uri);
@@ -187,6 +213,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.window.onDidChangeActiveTextEditor(() => {
       void refreshContexts();
+      variantProvider.refresh();
+      drcRulesProvider.refresh();
+      void pushStudioContext();
     }),
     vscode.window.tabGroups.onDidChangeTabs(() => {
       void refreshContexts();
@@ -196,11 +225,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         event.affectsConfiguration(SETTINGS.cliPath) ||
         event.affectsConfiguration(SETTINGS.aiProvider) ||
         event.affectsConfiguration(SETTINGS.aiLanguage) ||
-        event.affectsConfiguration(SETTINGS.aiOpenAIApiMode)
+        event.affectsConfiguration(SETTINGS.aiOpenAIApiMode) ||
+        event.affectsConfiguration(SETTINGS.mcpEndpoint) ||
+        event.affectsConfiguration(SETTINGS.mcpAutoDetect)
       ) {
         cliDetector.clearCache();
         aiHealthy = undefined;
         void refreshContexts();
+        void refreshMcpState();
       }
       if (event.affectsConfiguration(SETTINGS.logLevel)) {
         logger.refreshLevel();
@@ -229,14 +261,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     exportService,
     checkService,
     diffEditorProvider,
+    fixQueueProvider,
     diagnosticsCollection,
     statusBar,
     componentSearch,
     aiProviders,
     errorAnalyzer,
     circuitExplainer,
+    importService,
     libraryIndexer,
     librarySearch,
+    mcpClient,
+    variantProvider,
+    drcRulesProvider,
     treeProvider,
     context,
     logger,
@@ -246,12 +283,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
     setAiHealthy: (value) => {
       aiHealthy = value;
-    }
+    },
+    pushStudioContext,
+    refreshContexts,
+    refreshMcpState
   });
 
   void cliDetector.detect().then((cli) => {
     statusBar.update({ cli });
   });
+  void refreshMcpState();
+  variantProvider.refresh();
+  drcRulesProvider.refresh();
 
   await refreshContexts();
 
@@ -265,6 +308,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   logger.info('KiCad Studio activated successfully.');
+  logger.info(`KiCad Studio activated in ${Date.now() - activationStartedAt}ms`);
 
   async function refreshContexts(): Promise<void> {
     const activeUri = getActiveResourceUri();
@@ -273,6 +317,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       (await vscode.workspace.findFiles('**/*.kicad_sch', '**/node_modules/**', 1)).length > 0 ||
       (await vscode.workspace.findFiles('**/*.kicad_pcb', '**/node_modules/**', 1)).length > 0;
     const provider = await aiProviders.getProvider();
+    const cli = await cliDetector.detect();
+    const kicadVersionMajor = Number(cli?.version.split('.')[0] ?? '0');
+    const hasVariants = await workspaceHasVariants();
     await vscode.commands.executeCommand('setContext', CONTEXT_KEYS.hasProject, hasProject);
     await vscode.commands.executeCommand(
       'setContext',
@@ -293,6 +340,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       'setContext',
       CONTEXT_KEYS.aiHealthy,
       Boolean(provider?.isConfigured() && aiHealthy !== false)
+    );
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.kicad10Plus,
+      kicadVersionMajor >= 10
+    );
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.hasVariants,
+      hasVariants
     );
     statusBar.update({
       aiConfigured: Boolean(provider?.isConfigured()),
@@ -326,6 +383,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           summary: result.summary
         };
         await maybeOfferProactiveDrc(result.summary, result.diagnostics.length);
+        await pushStudioContext();
       }
       if (result.diagnostics.length > 0) {
         await vscode.commands.executeCommand('workbench.actions.view.problems');
@@ -356,6 +414,106 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (choice === 'Yes, analyze') {
       await vscode.commands.executeCommand(COMMANDS.aiProactiveDRC);
     }
+  }
+
+  async function refreshMcpState(): Promise<void> {
+    const state = await mcpClient.testConnection();
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.mcpAvailable,
+      state.available
+    );
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.mcpConnected,
+      state.connected
+    );
+    statusBar.update({
+      mcpAvailable: state.available,
+      mcpConnected: state.connected
+    });
+
+    if (
+      state.available &&
+      !state.connected &&
+      vscode.workspace.getConfiguration().get<boolean>(SETTINGS.mcpAutoDetect, true)
+    ) {
+      await maybeOfferMcpBootstrap(state.install);
+    }
+  }
+
+  async function maybeOfferMcpBootstrap(
+    installStatus: McpInstallStatus | undefined
+  ): Promise<void> {
+    if (!installStatus?.found) {
+      return;
+    }
+
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root) {
+      return;
+    }
+
+    const mcpJsonPath = path.join(root, '.vscode', 'mcp.json');
+    if (fs.existsSync(mcpJsonPath)) {
+      return;
+    }
+
+    const choice = await vscode.window.showInformationMessage(
+      'kicad-mcp-pro was detected. Create .vscode/mcp.json for this project?',
+      'Setup MCP',
+      'Later'
+    );
+    if (choice === 'Setup MCP') {
+      await mcpDetector.generateMcpJson(root, installStatus);
+      await refreshMcpState();
+    }
+  }
+
+  async function buildStudioContext(): Promise<{
+    activeFile: string | undefined;
+    fileType: 'schematic' | 'pcb' | 'other';
+    drcErrors: string[];
+    selectedReference?: string | undefined;
+    selectedArea?:
+      | {
+          x1: number;
+          y1: number;
+          x2: number;
+          y2: number;
+        }
+      | undefined;
+    activeVariant?: string | undefined;
+    mcpConnected?: boolean | undefined;
+  }> {
+    const activeUri = getActiveResourceUri();
+    const fileType =
+      activeUri?.fsPath.endsWith('.kicad_sch')
+        ? 'schematic'
+        : activeUri?.fsPath.endsWith('.kicad_pcb')
+          ? 'pcb'
+          : 'other';
+    const viewerState =
+      fileType === 'pcb' && activeUri
+        ? pcbEditorProvider.getViewerState(activeUri)
+        : fileType === 'schematic' && activeUri
+          ? schematicEditorProvider.getViewerState(activeUri)
+          : undefined;
+    const mcpState = await mcpClient.testConnection();
+    return {
+      activeFile: activeUri?.fsPath,
+      fileType,
+      drcErrors:
+        latestDrcRun?.diagnostics.map((diagnostic) => diagnostic.message).slice(0, 20) ?? [],
+      selectedReference: viewerState?.selectedReference,
+      selectedArea: viewerState?.selectedArea,
+      activeVariant: await variantProvider.getActiveVariantName(),
+      mcpConnected: mcpState.connected
+    };
+  }
+
+  async function pushStudioContext(): Promise<void> {
+    await contextBridge.pushContext(await buildStudioContext());
   }
 }
 
@@ -435,16 +593,21 @@ function registerCommands(
   services: {
     cliDetector: KiCadCliDetector;
     exportService: KiCadExportService;
+    importService: KiCadImportService;
     checkService: KiCadCheckService;
     diffEditorProvider: DiffEditorProvider;
+    fixQueueProvider: FixQueueProvider;
     diagnosticsCollection: vscode.DiagnosticCollection;
     statusBar: KiCadStatusBar;
     componentSearch: ComponentSearchService;
     aiProviders: AIProviderRegistry;
     errorAnalyzer: ErrorAnalyzer;
     circuitExplainer: CircuitExplainer;
+    mcpClient: McpClient;
     libraryIndexer: KiCadLibraryIndexer;
     librarySearch: LibrarySearchProvider;
+    variantProvider: VariantProvider;
+    drcRulesProvider: DrcRulesProvider;
     treeProvider: KiCadProjectTreeProvider;
     context: vscode.ExtensionContext;
     logger: Logger;
@@ -461,6 +624,9 @@ function registerCommands(
       summary: DiagnosticSummary;
     }) => void;
     setAiHealthy: (value: boolean | undefined) => void;
+    pushStudioContext: () => Promise<void>;
+    refreshContexts: () => Promise<void>;
+    refreshMcpState: () => Promise<void>;
   }
 ): void {
   const registrations: vscode.Disposable[] = [];
@@ -492,6 +658,7 @@ function registerCommands(
           { label: '$(package) Export Gerbers', command: COMMANDS.exportGerbers },
           { label: '$(archive) Export Manufacturing Package', command: COMMANDS.exportManufacturingPackage },
           { label: '$(file-pdf) Export PDF', command: COMMANDS.exportPDF },
+          { label: '$(plug) Setup MCP Integration', command: COMMANDS.setupMcpIntegration },
           { label: '$(search) Search Component', command: COMMANDS.searchComponent },
           { label: '$(comment-discussion) Open AI Chat', command: COMMANDS.openAiChat },
           { label: '$(search) Search Library Symbol', command: COMMANDS.searchLibrarySymbol },
@@ -552,6 +719,9 @@ function registerCommands(
     ),
     vscode.commands.registerCommand(COMMANDS.exportPCBPDF, (resource?: vscode.Uri) =>
       services.exportService.exportPCBPDF(resource)
+    ),
+    vscode.commands.registerCommand(COMMANDS.export3DPdf, (resource?: vscode.Uri) =>
+      services.exportService.export3DPdf(resource)
     ),
     vscode.commands.registerCommand(COMMANDS.exportSVG, (resource?: vscode.Uri) =>
       services.exportService.exportSVG(resource)
@@ -621,6 +791,7 @@ function registerCommands(
           diagnostics: result.diagnostics,
           summary: result.summary
         });
+        void services.fixQueueProvider.refresh().catch(() => undefined);
         if (result.diagnostics.length > 0) {
           await vscode.commands.executeCommand('workbench.actions.view.problems');
           const provider = await services.aiProviders.getProvider();
@@ -635,6 +806,7 @@ function registerCommands(
             }
           }
         }
+        await services.pushStudioContext();
       } catch (error) {
         void vscode.window.showErrorMessage(
           error instanceof Error
@@ -698,14 +870,24 @@ function registerCommands(
         rankedDiagnostics.slice(0, 5).map((diagnostic) => `${diagnostic.code ?? 'rule'}: ${diagnostic.message}`),
         [formatDiagnosticSummary(drcRun.summary), getActiveAiContext().description].filter(Boolean).join('\n')
       );
-      const panel = KiCadChatPanel.createOrShow(extensionContext, services.aiProviders, services.logger);
+      const panel = KiCadChatPanel.createOrShow(
+        extensionContext,
+        services.aiProviders,
+        services.logger,
+        services.mcpClient
+      );
       await panel.submitPrompt('Analyze the latest DRC results and prioritize fixes.', prompt);
     }),
     vscode.commands.registerCommand(COMMANDS.aiExplainCircuit, () =>
       services.circuitExplainer.explainSelection()
     ),
     vscode.commands.registerCommand(COMMANDS.openAiChat, () => {
-      KiCadChatPanel.createOrShow(extensionContext, services.aiProviders, services.logger);
+      KiCadChatPanel.createOrShow(
+        extensionContext,
+        services.aiProviders,
+        services.logger,
+        services.mcpClient
+      );
     }),
     vscode.commands.registerCommand(COMMANDS.testAiConnection, async () => {
       const provider = await services.aiProviders.getProvider();
@@ -778,7 +960,90 @@ function registerCommands(
       await services.context.secrets.delete(AI_SECRET_KEY);
       await services.context.secrets.delete(OCTOPART_SECRET_KEY);
       void vscode.window.showInformationMessage('Stored KiCad Studio secrets cleared.');
-    })
+    }),
+    vscode.commands.registerCommand(COMMANDS.setupMcpIntegration, async () => {
+      const install = await services.mcpClient.detectInstall();
+      if (!install.found) {
+        const choice = await vscode.window.showWarningMessage(
+          'kicad-mcp-pro could not be detected. Install it first, then rerun setup.',
+          'Open Repository'
+        );
+        if (choice === 'Open Repository') {
+          await vscode.env.openExternal(
+            vscode.Uri.parse('https://github.com/oaslananka/kicad-mcp-pro')
+          );
+        }
+        return;
+      }
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!root) {
+        void vscode.window.showWarningMessage('Open a workspace folder before configuring MCP integration.');
+        return;
+      }
+      const detector = new McpDetector();
+      await detector.generateMcpJson(root, install);
+      await services.refreshMcpState();
+    }),
+    vscode.commands.registerCommand(COMMANDS.openDesignIntent, () => {
+      DesignIntentPanel.createOrShow(extensionContext, services.mcpClient);
+    }),
+    vscode.commands.registerCommand(COMMANDS.refreshFixQueue, () =>
+      services.fixQueueProvider.refresh()
+    ),
+    vscode.commands.registerCommand(COMMANDS.applyFixQueueItem, (item) =>
+      services.fixQueueProvider.applyFix(item)
+    ),
+    vscode.commands.registerCommand(COMMANDS.createVariant, async () => {
+      await services.variantProvider.createVariant();
+      await services.refreshContexts();
+      await services.pushStudioContext();
+    }),
+    vscode.commands.registerCommand(COMMANDS.setActiveVariant, async (variant) => {
+      await services.variantProvider.setActive(variant);
+      await services.refreshContexts();
+      await services.pushStudioContext();
+    }),
+    vscode.commands.registerCommand(COMMANDS.diffVariantBom, () =>
+      services.variantProvider.diffBom()
+    ),
+    vscode.commands.registerCommand(COMMANDS.refreshVariants, () =>
+      services.variantProvider.refresh()
+    ),
+    vscode.commands.registerCommand(COMMANDS.revealDrcRule, (item: DrcRuleItem) =>
+      services.drcRulesProvider.reveal(item)
+    ),
+    vscode.commands.registerCommand(COMMANDS.addDrcRuleWithMcp, async () => {
+      const state = await services.mcpClient.testConnection();
+      if (!state.connected) {
+        await vscode.commands.executeCommand(COMMANDS.setupMcpIntegration);
+        return;
+      }
+      await vscode.commands.executeCommand(COMMANDS.openDesignIntent);
+    }),
+    vscode.commands.registerCommand(COMMANDS.exportViewerSvg, (resource?: vscode.Uri) =>
+      services.exportService.exportSVG(resource)
+    ),
+    vscode.commands.registerCommand(COMMANDS.importPads, () =>
+      services.importService.importBoard('pads')
+    ),
+    vscode.commands.registerCommand(COMMANDS.importAltium, () =>
+      services.importService.importBoard('altium')
+    ),
+    vscode.commands.registerCommand(COMMANDS.importEagle, () =>
+      services.importService.importBoard('eagle')
+    ),
+    vscode.commands.registerCommand(COMMANDS.importCadstar, () =>
+      services.importService.importBoard('cadstar')
+    ),
+    vscode.commands.registerCommand(COMMANDS.importFabmaster, () =>
+      services.importService.importBoard('fabmaster')
+    ),
+    vscode.commands.registerCommand(COMMANDS.importPcad, () =>
+      services.importService.importBoard('pcad')
+    ),
+    vscode.commands.registerCommand(COMMANDS.importSolidworks, () =>
+      services.importService.importBoard('solidworks')
+    )
   );
 
   extensionContext.subscriptions.push(...registrations);
@@ -826,7 +1091,7 @@ function getKiCadExecutableCandidates(filePath: string, configured: string): str
   }
 
   if (process.platform === 'win32') {
-    const programFiles = process.env.PROGRAMFILES ?? 'C:\\Program Files';
+    const programFiles = process.env['PROGRAMFILES'] ?? 'C:\\Program Files';
     const programFilesX86 = process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)';
     for (const root of [programFiles, programFilesX86]) {
       for (const version of ['10.0', '10', '9.0', '9', '8.0', '8', '7.0', '7', '6.0', '6']) {
@@ -927,4 +1192,23 @@ async function resolveTargetFile(resource: vscode.Uri | undefined, extname: stri
   }
   const files = await vscode.workspace.findFiles(`**/*${extname}`, '**/node_modules/**', 1);
   return files[0]?.fsPath;
+}
+
+async function workspaceHasVariants(): Promise<boolean> {
+  const projectFile = await findFirstWorkspaceFile('**/*.kicad_pro');
+  if (!projectFile) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(projectFile, 'utf8')) as {
+      variants?: unknown[];
+      design_variants?: unknown[];
+    };
+    return (
+      (Array.isArray(parsed.variants) && parsed.variants.length > 0) ||
+      (Array.isArray(parsed.design_variants) && parsed.design_variants.length > 0)
+    );
+  } catch {
+    return false;
+  }
 }

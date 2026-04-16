@@ -2,7 +2,7 @@
   "name": "kicadstudio",
   "displayName": "KiCad Studio",
   "description": "The complete KiCad development environment for VS Code — view schematics & PCBs, run DRC/ERC, export production files, search components, and get AI-powered design assistance.",
-  "version": "2.0.1",
+  "version": "2.3.0",
   "publisher": "oaslananka",
   "engines": {
     "vscode": "^1.95.0",
@@ -24,7 +24,14 @@
     "gerber",
     "erc",
     "drc",
-    "bom"
+    "bom",
+    "kicad10",
+    "variants",
+    "mcp",
+    "ai",
+    "claude",
+    "copilot",
+    "spice"
   ],
   "icon": "assets/icon.png",
   "galleryBanner": {
@@ -45,7 +52,8 @@
     "workspaceContains:**/*.kicad_pro",
     "workspaceContains:**/*.kicad_jobset",
     "workspaceContains:**/*.kicad_sch",
-    "workspaceContains:**/*.kicad_pcb"
+    "workspaceContains:**/*.kicad_pcb",
+    "workspaceContains:**/*.kicad_dru"
   ],
   "contributes": {
     "languages": [
@@ -109,6 +117,16 @@
           ".kicad_jobset"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "kicad-drc",
+        "aliases": [
+          "KiCad DRC Rules"
+        ],
+        "extensions": [
+          ".kicad_dru"
+        ],
+        "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [
@@ -136,6 +154,11 @@
         "language": "kicad-project",
         "scopeName": "source.kicad.pro",
         "path": "./syntaxes/kicad-project.tmLanguage.json"
+      },
+      {
+        "language": "kicad-drc",
+        "scopeName": "source.kicad.dru",
+        "path": "./syntaxes/kicad-drc.tmLanguage.json"
       }
     ],
     "jsonValidation": [
@@ -195,6 +218,24 @@
           "name": "Netlist",
           "when": "kicadstudio.schematicOpen",
           "icon": "assets/icon-dark.png"
+        },
+        {
+          "id": "kicadstudio.variants",
+          "name": "Variants",
+          "when": "kicadstudio.hasProject && kicadstudio.kicad10Plus",
+          "icon": "assets/icon-dark.png"
+        },
+        {
+          "id": "kicadstudio.fixQueue",
+          "name": "AI Fix Queue",
+          "when": "kicadstudio.mcpConnected",
+          "icon": "assets/icon-dark.png"
+        },
+        {
+          "id": "kicadstudio.drcRules",
+          "name": "DRC Rules",
+          "when": "kicadstudio.hasProject",
+          "icon": "assets/icon-dark.png"
         }
       ]
     },
@@ -210,6 +251,18 @@
       {
         "view": "kicadstudio.netlistView",
         "contents": "Open a schematic file to inspect its netlist here."
+      },
+      {
+        "view": "kicadstudio.variants",
+        "contents": "Open a KiCad 10 project to browse and switch design variants."
+      },
+      {
+        "view": "kicadstudio.fixQueue",
+        "contents": "Connect `kicad-mcp-pro` to see actionable AI fixes here."
+      },
+      {
+        "view": "kicadstudio.drcRules",
+        "contents": "Open a `.kicad_dru` file or add one to the workspace to inspect graphical rules."
       }
     ],
     "commands": [
@@ -444,6 +497,101 @@
         "command": "kicadstudio.clearSecrets",
         "title": "KiCad: Clear Stored Secrets",
         "category": "KiCad Setup"
+      },
+      {
+        "command": "kicadstudio.export3DPdf",
+        "title": "KiCad: Export 3D PDF",
+        "category": "KiCad Export"
+      },
+      {
+        "command": "kicadstudio.setupMcpIntegration",
+        "title": "KiCad: Setup MCP Integration",
+        "category": "KiCad Setup"
+      },
+      {
+        "command": "kicadstudio.openDesignIntent",
+        "title": "KiCad: Open Design Intent",
+        "category": "KiCad MCP"
+      },
+      {
+        "command": "kicadstudio.refreshFixQueue",
+        "title": "KiCad: Refresh AI Fix Queue",
+        "category": "KiCad MCP"
+      },
+      {
+        "command": "kicadstudio.applyFixQueueItem",
+        "title": "KiCad: Apply AI Fix",
+        "category": "KiCad MCP"
+      },
+      {
+        "command": "kicadstudio.variant.create",
+        "title": "KiCad: New Variant",
+        "category": "KiCad Variants"
+      },
+      {
+        "command": "kicadstudio.variant.setActive",
+        "title": "KiCad: Set Active Variant",
+        "category": "KiCad Variants"
+      },
+      {
+        "command": "kicadstudio.variant.diffBom",
+        "title": "KiCad: Compare Variant BOMs",
+        "category": "KiCad Variants"
+      },
+      {
+        "command": "kicadstudio.variant.refresh",
+        "title": "KiCad: Refresh Variants",
+        "category": "KiCad Variants"
+      },
+      {
+        "command": "kicadstudio.drcRule.reveal",
+        "title": "KiCad: Reveal DRC Rule",
+        "category": "KiCad DRC"
+      },
+      {
+        "command": "kicadstudio.drcRule.addWithMcp",
+        "title": "KiCad: Add DRC Rule with MCP",
+        "category": "KiCad DRC"
+      },
+      {
+        "command": "kicadstudio.exportViewerSvg",
+        "title": "KiCad: Export Viewer SVG",
+        "category": "KiCad Viewer"
+      },
+      {
+        "command": "kicadstudio.importPads",
+        "title": "KiCad: Import PADS Board",
+        "category": "KiCad Import"
+      },
+      {
+        "command": "kicadstudio.importAltium",
+        "title": "KiCad: Import Altium Board",
+        "category": "KiCad Import"
+      },
+      {
+        "command": "kicadstudio.importEagle",
+        "title": "KiCad: Import Eagle Board",
+        "category": "KiCad Import"
+      },
+      {
+        "command": "kicadstudio.importCadstar",
+        "title": "KiCad: Import CADSTAR Board",
+        "category": "KiCad Import"
+      },
+      {
+        "command": "kicadstudio.importFabmaster",
+        "title": "KiCad: Import Fabmaster Board",
+        "category": "KiCad Import"
+      },
+      {
+        "command": "kicadstudio.importPcad",
+        "title": "KiCad: Import P-CAD Board",
+        "category": "KiCad Import"
+      },
+      {
+        "command": "kicadstudio.importSolidworks",
+        "title": "KiCad: Import SolidWorks PCB",
+        "category": "KiCad Import"
       }
     ],
     "menus": {
@@ -481,6 +629,26 @@
           "view": "kicadstudio.projectTree",
           "command": "kicadstudio.refreshProjectTree",
           "group": "navigation"
+        },
+        {
+          "view": "kicadstudio.variants",
+          "command": "kicadstudio.variant.refresh",
+          "group": "navigation"
+        },
+        {
+          "view": "kicadstudio.variants",
+          "command": "kicadstudio.variant.create",
+          "group": "navigation"
+        },
+        {
+          "view": "kicadstudio.fixQueue",
+          "command": "kicadstudio.refreshFixQueue",
+          "group": "navigation"
+        },
+        {
+          "view": "kicadstudio.drcRules",
+          "command": "kicadstudio.drcRule.addWithMcp",
+          "group": "navigation"
         }
       ],
       "commandPalette": [
@@ -503,6 +671,10 @@
         {
           "command": "kicadstudio.export3DPLY",
           "when": "kicadstudio.pcbOpen"
+        },
+        {
+          "command": "kicadstudio.export3DPdf",
+          "when": "kicadstudio.pcbOpen && kicadstudio.kicad10Plus"
         },
         {
           "command": "kicadstudio.exportGenCAD",
@@ -565,6 +737,25 @@
           "when": "kicadstudio.aiEnabled"
         },
         {
+          "command": "kicadstudio.setupMcpIntegration"
+        },
+        {
+          "command": "kicadstudio.openDesignIntent",
+          "when": "kicadstudio.mcpConnected"
+        },
+        {
+          "command": "kicadstudio.variant.create",
+          "when": "kicadstudio.kicad10Plus"
+        },
+        {
+          "command": "kicadstudio.variant.setActive",
+          "when": "kicadstudio.hasVariants"
+        },
+        {
+          "command": "kicadstudio.variant.diffBom",
+          "when": "kicadstudio.hasVariants"
+        },
+        {
           "command": "kicadstudio.testAiConnection",
           "when": "kicadstudio.aiEnabled"
         },
@@ -579,6 +770,15 @@
         },
         {
           "command": "kicadstudio.showStatusMenu"
+        },
+        {
+          "command": "kicadstudio.importPads"
+        },
+        {
+          "command": "kicadstudio.importAltium"
+        },
+        {
+          "command": "kicadstudio.importEagle"
         }
       ]
     },
@@ -695,6 +895,21 @@
           "default": true,
           "description": "Automatically refresh viewer when file is saved."
         },
+        "kicadstudio.viewer.syncThemeWithVscode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically sync viewer colors with the active VS Code theme."
+        },
+        "kicadstudio.viewer.enableLayerPanel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show layer visibility controls when PCB metadata is available."
+        },
+        "kicadstudio.viewer.enableSnapshotExport": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable PNG and SVG export actions inside the embedded viewer."
+        },
         "kicadstudio.componentSearch.enableLCSC": {
           "type": "boolean",
           "default": true,
@@ -706,7 +921,9 @@
           "enum": [
             "none",
             "claude",
-            "openai"
+            "openai",
+            "copilot",
+            "gemini"
           ],
           "description": "AI provider for circuit analysis and error explanation."
         },
@@ -760,6 +977,21 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically run ERC when schematic file is saved."
+        },
+        "kicadstudio.mcp.autoDetect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect kicad-mcp-pro and offer to create .vscode/mcp.json."
+        },
+        "kicadstudio.mcp.endpoint": {
+          "type": "string",
+          "default": "http://127.0.0.1:27185",
+          "description": "kicad-mcp-pro HTTP endpoint when the server is running in HTTP mode."
+        },
+        "kicadstudio.mcp.pushContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Push active file, DRC summary, and lasso selection context to kicad-mcp-pro."
         },
         "kicadstudio.exportPresets": {
           "type": "array",
@@ -842,6 +1074,54 @@
             "completionEvents": [
               "onContext:kicadstudio.schematicOpen"
             ]
+          },
+          {
+            "id": "kicadstudio.step.variants",
+            "title": "Browse KiCad 10 Variants",
+            "description": "Use the Variants sidebar to create, activate, and compare design variants in KiCad 10 projects.",
+            "media": {
+              "altText": "variants view",
+              "image": "assets/screenshots/schematic-viewer.png"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.variant.create"
+            ]
+          },
+          {
+            "id": "kicadstudio.step.mcp",
+            "title": "Connect kicad-mcp-pro",
+            "description": "Bootstrap optional MCP integration to unlock fix queues, design intent forms, and tool-backed AI workflows. [Setup MCP](command:kicadstudio.setupMcpIntegration)",
+            "media": {
+              "altText": "mcp setup",
+              "image": "assets/screenshots/ai-assistant.png"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.setupMcpIntegration"
+            ]
+          },
+          {
+            "id": "kicadstudio.step.ai",
+            "title": "Analyze DRC with AI",
+            "description": "Run DRC, then ask the AI chat to summarize and prioritize the findings.",
+            "media": {
+              "altText": "ai assistant",
+              "image": "assets/screenshots/ai-assistant.png"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.openAiChat"
+            ]
+          },
+          {
+            "id": "kicadstudio.step.exports",
+            "title": "Create Manufacturing Outputs",
+            "description": "Export fabrication packages, 3D assets, or KiCad 10 3D PDF files from the Command Palette.",
+            "media": {
+              "altText": "pcb viewer",
+              "image": "assets/screenshots/pcb-viewer.png"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.exportManufacturingPackage"
+            ]
           }
         ]
       }
@@ -856,8 +1136,10 @@
     "watch": "webpack --mode development --watch",
     "lint": "eslint src test scripts --ext .ts,.js",
     "compile-tests": "tsc -p tsconfig.test.json",
-    "test": "node ./out/test/runTest.js",
+    "test": "npm run test:unit && npm run test:integration",
     "test:unit": "jest --runInBand",
+    "test:integration": "node ./out/test/runTest.js",
+    "test:e2e": "playwright test test/e2e/",
     "check:bundle-size": "node scripts/check-bundle-size.js",
     "bundle-kicanvas": "node scripts/bundle-kicanvas.js",
     "package": "vsce package",
@@ -865,7 +1147,24 @@
     "publish": "vsce publish",
     "pretest": "npm run build && npm run compile-tests"
   },
+  "c8": {
+    "reporter": [
+      "text",
+      "lcov"
+    ],
+    "all": true,
+    "include": [
+      "src/**/*.ts"
+    ],
+    "exclude": [
+      "src/**/*.test.ts"
+    ],
+    "branches": 70,
+    "functions": 75,
+    "lines": 75
+  },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
     "@types/mocha": "^10.0.10",
@@ -875,6 +1174,7 @@
     "@typescript-eslint/parser": "^8.58.1",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
+    "c8": "^10.1.3",
     "eslint": "^10.2.0",
     "jest": "^30.3.0",
     "mocha": "^11.7.5",

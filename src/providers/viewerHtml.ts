@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { ViewerState } from '../types';
+import type { ViewerMetadata, ViewerState } from '../types';
 
 
 export interface KiCanvasViewerHtmlOptions {
@@ -12,6 +12,7 @@ export interface KiCanvasViewerHtmlOptions {
   base64: string;
   disabledReason: string;
   theme?: string;
+  metadata?: ViewerMetadata;
   restoreState?: ViewerState | undefined;
 }
 
@@ -32,12 +33,18 @@ export interface KiCanvasViewerHtmlOptions {
  */
 export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): string {
   const nonce = createNonce();
+  const themeName = options.theme ?? 'kicad';
+  const palette = resolveViewerPalette(themeName);
+  const hasSidebar = Boolean(
+    options.metadata?.layers?.length || options.metadata?.tuningProfiles?.length
+  );
   const payload: ViewerPayload = {
     fileName:       options.fileName,
     fileType:       options.fileType,
     base64:         options.base64,
     disabledReason: options.disabledReason,
-    theme:          options.theme ?? 'kicad',
+    theme:          themeName,
+    ...(options.metadata ? { metadata: options.metadata } : {}),
     ...(options.restoreState ? { restoreState: options.restoreState } : {})
   };
 
@@ -58,15 +65,16 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
   <title>${escapeHtml(options.title)}: ${escapeHtml(options.fileName)}</title>
   <style>
     :root {
-      color-scheme: dark;
-      --bg:      #050816;
-      --panel:   rgba(15,23,42,.94);
-      --border:  rgba(148,163,184,.22);
-      --text:    #e2e8f0;
-      --muted:   #94a3b8;
-      --accent:  #38bdf8;
-      --danger:  #fca5a5;
-      --green:   #86efac;
+      color-scheme: ${palette.colorScheme};
+      --bg:      ${palette.bg};
+      --panel:   ${palette.panel};
+      --border:  ${palette.border};
+      --text:    ${palette.text};
+      --muted:   ${palette.muted};
+      --accent:  ${palette.accent};
+      --danger:  ${palette.danger};
+      --green:   ${palette.green};
+      --viewer-card-bg: ${palette.card};
     }
     *, *::before, *::after { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
@@ -127,15 +135,17 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     main {
       position: relative;
       overflow: hidden;
-      background: #020617;
+      background: var(--bg);
       min-width: 0;
       min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) ${hasSidebar ? '320px' : '0'};
     }
 
     /* ── KiCanvas mount (fills main) ── */
     #viewer-mount {
       position: absolute;
-      inset: 0;
+      inset: 0 ${hasSidebar ? '320px' : '0'} 0 0;
       display: flex;
     }
     kicanvas-embed {
@@ -149,6 +159,62 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       max-height: none !important;
       aspect-ratio: auto !important;
       contain: strict !important;
+    }
+
+    aside {
+      position: relative;
+      z-index: 4;
+      border-left: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(2, 6, 23, 0.86), rgba(15, 23, 42, 0.94));
+      overflow-y: auto;
+      padding: 14px;
+      display: ${hasSidebar ? 'block' : 'none'};
+    }
+    .side-section {
+      border: 1px solid var(--border);
+      background: var(--viewer-card-bg);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .side-section h2 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .meta-list {
+      display: grid;
+      gap: 8px;
+    }
+    .meta-row {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.44);
+    }
+    .meta-row strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+    .layer-list {
+      display: grid;
+      gap: 6px;
+    }
+    .layer-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .side-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
     }
 
     /* ── Overlays ── */
@@ -230,6 +296,8 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     <div class="actions">
       <button class="btn" id="reload-btn"    type="button" aria-label="Reload viewer">Reload Viewer</button>
       <button class="btn" id="open-kicad-btn" type="button" aria-label="Open in KiCad">Open in KiCad</button>
+      <button class="btn" id="export-png-btn" type="button" aria-label="Export PNG">Export PNG</button>
+      <button class="btn" id="export-svg-btn" type="button" aria-label="Export SVG">Export SVG</button>
     </div>
     <span id="viewer-status">${escapeHtml(options.status)}</span>
   </header>
@@ -239,7 +307,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     <div id="viewer-mount"></div>
 
     <!-- Loading overlay (shown while KiCanvas initializes) -->
-    <div id="loading-overlay" class="overlay" role="status" aria-label="Dosya yükleniyor...">
+    <div id="loading-overlay" class="overlay" role="status" aria-label="Loading file...">
       <div id="loading-card" class="card" style="text-align:center">
         <div class="spinner" aria-hidden="true"></div>
         <strong>Loading KiCanvas renderer…</strong>
@@ -274,6 +342,27 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
         <div id="safe-preview" aria-label="File source preview (first 3000 chars)"></div>
       </div>
     </div>
+
+    <aside aria-label="Viewer side panel">
+      <div class="side-section">
+        <h2>Viewer Tools</h2>
+        <div class="side-actions">
+          <button class="btn" id="fit-btn" type="button">Fit</button>
+          <button class="btn" id="all-layers-btn" type="button">All</button>
+          <button class="btn" id="none-layers-btn" type="button">None</button>
+          <button class="btn" id="copper-layers-btn" type="button">Copper Only</button>
+        </div>
+        <div id="selection-summary" class="meta-row">No lasso area selected.</div>
+      </div>
+      <div class="side-section" id="layers-section" hidden>
+        <h2>Layer Visibility</h2>
+        <div id="layer-list" class="layer-list"></div>
+      </div>
+      <div class="side-section" id="tuning-section" hidden>
+        <h2>Tuning Profiles</h2>
+        <div id="tuning-list" class="meta-list"></div>
+      </div>
+    </aside>
   </main>
 
   <!-- Payload embedded in HTML so it's available before postMessage -->
@@ -306,6 +395,11 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     const emptyTitleEl   = document.getElementById('empty-title');
     const safePreviewEl  = document.getElementById('safe-preview');
     const viewerMount    = document.getElementById('viewer-mount');
+    const layerListEl    = document.getElementById('layer-list');
+    const layersSection  = document.getElementById('layers-section');
+    const tuningListEl   = document.getElementById('tuning-list');
+    const tuningSection  = document.getElementById('tuning-section');
+    const selectionSummaryEl = document.getElementById('selection-summary');
 
     // ── Payload ───────────────────────────────────────────────────────────────
     const payload = JSON.parse(
@@ -323,6 +417,18 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     document.getElementById('open-kicad-btn').addEventListener('click', openInKiCad);
     document.getElementById('error-reload-btn').addEventListener('click', () => initViewer());
     document.getElementById('error-open-btn').addEventListener('click', openInKiCad);
+    document.getElementById('export-png-btn').addEventListener('click', exportPng);
+    document.getElementById('export-svg-btn').addEventListener('click', exportSvg);
+    document.getElementById('fit-btn').addEventListener('click', () => {
+      const viewer = viewerMount.querySelector('kicanvas-embed');
+      viewer?.fitToScreen?.();
+      localState = { ...localState, zoom: 1 };
+      postViewerState();
+    });
+    document.getElementById('all-layers-btn').addEventListener('click', () => setAllLayers(true));
+    document.getElementById('none-layers-btn').addEventListener('click', () => setAllLayers(false));
+    document.getElementById('copper-layers-btn').addEventListener('click', () => setCopperOnly());
+    renderSidebar();
 
     // ── VS Code → WebView messages ────────────────────────────────────────────
     window.addEventListener('message', (event) => {
@@ -344,6 +450,10 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
         payload.restoreState = msg.payload?.restoreState || payload.restoreState;
         localState = payload.restoreState || localState;
         void initViewer();
+      }
+      if (msg.type === 'setMetadata') {
+        payload.metadata = msg.payload || payload.metadata;
+        renderSidebar();
       }
     });
 
@@ -443,7 +553,9 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
 
         // ── 6. Success ────────────────────────────────────────────────────────
         viewer.fitToScreen?.();
+        applyLayerVisibility(viewer);
         applyViewerState(viewer);
+        installSelectionTracking(viewer);
         hideAll();
         installKeyboardShortcuts(viewer);
         setStatus('Interactive renderer loaded: ' + payload.fileName);
@@ -592,7 +704,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     }
 
     function openInKiCad() {
-      vscode.postMessage({ type: 'openInKiCad' });
+      vscode.postMessage({ type: 'openInKiCad', payload: { selectedArea: localState.selectedArea } });
     }
 
     function postViewerState() {
@@ -609,7 +721,176 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       }
       viewer.setAttribute('theme', payload.restoreState.theme || payload.theme || 'kicad');
       localState = payload.restoreState;
+      updateSelectionSummary();
       postViewerState();
+    }
+
+    function renderSidebar() {
+      const layers = payload.metadata?.layers || [];
+      const tuningProfiles = payload.metadata?.tuningProfiles || [];
+
+      layersSection.hidden = layers.length === 0;
+      tuningSection.hidden = tuningProfiles.length === 0;
+      layerListEl.innerHTML = '';
+      tuningListEl.innerHTML = '';
+
+      if (!localState.activeLayers && layers.length) {
+        localState.activeLayers = layers.filter((layer) => layer.visible !== false).map((layer) => layer.name);
+      }
+
+      for (const layer of layers) {
+        const row = document.createElement('label');
+        row.className = 'layer-row';
+        const checked = (localState.activeLayers || []).includes(layer.name);
+        row.innerHTML = '<input type="checkbox"' + (checked ? ' checked' : '') + '> <span></span>';
+        row.querySelector('span').textContent = layer.name + (layer.kind ? ' (' + layer.kind + ')' : '');
+        row.querySelector('input').addEventListener('change', (event) => {
+          const nextChecked = Boolean(event.target.checked);
+          const activeLayers = new Set(localState.activeLayers || []);
+          if (nextChecked) {
+            activeLayers.add(layer.name);
+          } else {
+            activeLayers.delete(layer.name);
+          }
+          localState = { ...localState, activeLayers: [...activeLayers] };
+          postViewerState();
+          applyLayerVisibility(viewerMount.querySelector('kicanvas-embed'));
+        });
+        layerListEl.appendChild(row);
+      }
+
+      for (const profile of tuningProfiles) {
+        const row = document.createElement('div');
+        row.className = 'meta-row';
+        row.innerHTML = '<strong></strong><div></div>';
+        row.querySelector('strong').textContent = profile.name || 'Tuning profile';
+        row.querySelector('div').textContent = [
+          profile.layer ? 'Layer: ' + profile.layer : '',
+          profile.impedance ? 'Impedance: ' + profile.impedance : '',
+          profile.propagationSpeed ? 'Propagation: ' + profile.propagationSpeed : ''
+        ].filter(Boolean).join(' · ') || (profile.raw || '');
+        tuningListEl.appendChild(row);
+      }
+
+      updateSelectionSummary();
+    }
+
+    function applyLayerVisibility(viewer) {
+      if (!viewer || !Array.isArray(localState.activeLayers)) {
+        return;
+      }
+
+      try {
+        viewer.setAttribute('layers', localState.activeLayers.join(','));
+      } catch {}
+
+      try {
+        const internalViewer = viewer.viewer;
+        const layerSet = internalViewer?.layers;
+        if (!layerSet?.in_order) {
+          return;
+        }
+        for (const layer of Array.from(layerSet.in_order())) {
+          layer.visible = localState.activeLayers.includes(layer.name);
+        }
+        internalViewer.draw?.();
+      } catch {}
+    }
+
+    function setAllLayers(visible) {
+      const layers = payload.metadata?.layers || [];
+      localState = {
+        ...localState,
+        activeLayers: visible ? layers.map((layer) => layer.name) : []
+      };
+      renderSidebar();
+      postViewerState();
+      applyLayerVisibility(viewerMount.querySelector('kicanvas-embed'));
+    }
+
+    function setCopperOnly() {
+      const layers = payload.metadata?.layers || [];
+      localState = {
+        ...localState,
+        activeLayers: layers
+          .filter((layer) => /\\.Cu$/i.test(layer.name))
+          .map((layer) => layer.name)
+      };
+      renderSidebar();
+      postViewerState();
+      applyLayerVisibility(viewerMount.querySelector('kicanvas-embed'));
+    }
+
+    function installSelectionTracking(viewer) {
+      let dragStart = null;
+      viewer.addEventListener('pointerdown', (event) => {
+        dragStart = { x: event.clientX, y: event.clientY };
+      });
+      viewer.addEventListener('pointerup', (event) => {
+        if (!dragStart) {
+          return;
+        }
+        const dx = Math.abs(event.clientX - dragStart.x);
+        const dy = Math.abs(event.clientY - dragStart.y);
+        if (dx < 4 && dy < 4) {
+          dragStart = null;
+          return;
+        }
+        localState = {
+          ...localState,
+          selectedArea: {
+            x1: dragStart.x,
+            y1: dragStart.y,
+            x2: event.clientX,
+            y2: event.clientY
+          }
+        };
+        updateSelectionSummary();
+        vscode.postMessage({
+          type: 'selectionChanged',
+          payload: {
+            selectedArea: localState.selectedArea
+          }
+        });
+        dragStart = null;
+      });
+      viewer.addEventListener('dblclick', () => {
+        localState = {
+          ...localState,
+          selectedArea: undefined
+        };
+        updateSelectionSummary();
+        vscode.postMessage({
+          type: 'selectionChanged',
+          payload: {
+            selectedArea: undefined
+          }
+        });
+      });
+    }
+
+    function updateSelectionSummary() {
+      if (!localState.selectedArea) {
+        selectionSummaryEl.textContent = 'No lasso area selected.';
+        return;
+      }
+      const area = localState.selectedArea;
+      selectionSummaryEl.textContent =
+        'Selected area: (' + area.x1 + ', ' + area.y1 + ') → (' + area.x2 + ', ' + area.y2 + ')';
+    }
+
+    function exportPng() {
+      const canvas = viewerMount.querySelector('canvas');
+      if (!canvas) {
+        showError('Export failed', 'No rendered canvas is available for PNG export.', '');
+        return;
+      }
+      const dataUrl = canvas.toDataURL('image/png');
+      vscode.postMessage({ type: 'exportPng', payload: { dataUrl } });
+    }
+
+    function exportSvg() {
+      vscode.postMessage({ type: 'exportSvg' });
     }
 
     // ── State helpers ─────────────────────────────────────────────────────────
@@ -727,6 +1008,7 @@ interface ViewerPayload {
   base64:         string;
   disabledReason: string;
   theme:          string;
+  metadata?:      ViewerMetadata | undefined;
   restoreState?: ViewerState | undefined;
 }
 
@@ -761,6 +1043,47 @@ function createNonce(): string {
   let value = '';
   for (let i = 0; i < 32; i++) value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
   return value;
+}
+
+function resolveViewerPalette(theme: string): {
+  colorScheme: 'dark' | 'light';
+  bg: string;
+  panel: string;
+  card: string;
+  border: string;
+  text: string;
+  muted: string;
+  accent: string;
+  danger: string;
+  green: string;
+} {
+  if (theme === 'light') {
+    return {
+      colorScheme: 'light',
+      bg: '#f8fafc',
+      panel: 'rgba(255,255,255,0.92)',
+      card: 'rgba(255,255,255,0.78)',
+      border: 'rgba(15,23,42,0.12)',
+      text: '#0f172a',
+      muted: '#475569',
+      accent: '#0369a1',
+      danger: '#dc2626',
+      green: '#15803d'
+    };
+  }
+
+  return {
+    colorScheme: 'dark',
+    bg: '#050816',
+    panel: 'rgba(15,23,42,.94)',
+    card: 'rgba(15,23,42,.72)',
+    border: 'rgba(148,163,184,.22)',
+    text: '#e2e8f0',
+    muted: '#94a3b8',
+    accent: '#38bdf8',
+    danger: '#fca5a5',
+    green: '#86efac'
+  };
 }
 
 export function kicanvasUri(context: vscode.ExtensionContext, webview: vscode.Webview): string {

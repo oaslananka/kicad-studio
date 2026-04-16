@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, '..');
 const outputDir = path.join(root, 'media', 'kicanvas');
 const outputFile = path.join(outputDir, 'kicanvas.js');
 const noticeFile = path.join(outputDir, 'NOTICE.txt');
-const upstreamRef = process.env.KICANVAS_REF || '988a4f3f3d420c0bcb11f561b03b75a9b67ff477';
+const upstreamRef = process.env.KICANVAS_REF || 'latest';
 const upstreamRepo = 'https://github.com/theacodes/kicanvas.git';
 
 function isCommitSha(value) {
@@ -30,6 +30,26 @@ function run(command, args, cwd) {
     );
   }
   return result.stdout.trim();
+}
+
+function resolveRequestedRef(repoUrl) {
+  if (upstreamRef !== 'latest') {
+    return upstreamRef;
+  }
+
+  const tags = run('git', ['ls-remote', '--tags', '--sort=-version:refname', repoUrl], root)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split(/\s+/)[1])
+    .filter(Boolean)
+    .filter((ref) => !ref.endsWith('^{}'));
+
+  if (tags[0]) {
+    return tags[0].replace('refs/tags/', '');
+  }
+
+  return 'main';
 }
 
 function writeFallbackBundle(target) {
@@ -124,14 +144,15 @@ if (!fs.existsSync(outputFile)) {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kicanvas-'));
   const repoDir = path.join(tempRoot, 'repo');
   try {
+    const requestedRef = resolveRequestedRef(upstreamRepo);
     fs.mkdirSync(repoDir, { recursive: true });
     run('git', ['init'], repoDir);
     run('git', ['remote', 'add', 'origin', upstreamRepo], repoDir);
-    if (isCommitSha(upstreamRef)) {
-      run('git', ['fetch', '--depth', '1', 'origin', upstreamRef], repoDir);
+    if (isCommitSha(requestedRef)) {
+      run('git', ['fetch', '--depth', '1', 'origin', requestedRef], repoDir);
       run('git', ['checkout', '--detach', 'FETCH_HEAD'], repoDir);
     } else {
-      run('git', ['fetch', '--depth', '1', 'origin', upstreamRef], repoDir);
+      run('git', ['fetch', '--depth', '1', 'origin', requestedRef], repoDir);
       run('git', ['checkout', 'FETCH_HEAD'], repoDir);
     }
     if (process.platform === 'win32') {
@@ -150,7 +171,7 @@ if (!fs.existsSync(outputFile)) {
     fs.copyFileSync(builtFile, outputFile);
     fs.writeFileSync(
       noticeFile,
-      `KiCanvas bundle sourced from https://github.com/theacodes/kicanvas at ${resolvedRef} under the MIT license.\n`,
+      `KiCanvas bundle sourced from https://github.com/theacodes/kicanvas at ${resolvedRef} (requested ref: ${requestedRef}) under the MIT license.\n`,
       'utf8'
     );
   } catch (error) {

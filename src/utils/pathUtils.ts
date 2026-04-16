@@ -45,3 +45,26 @@ export function normalizeUserPath(targetPath: string): string {
   }
   return path.normalize(targetPath);
 }
+
+export function findSiblingProjectFile(filePath: string): string | undefined {
+  const sibling = path.join(path.dirname(filePath), `${path.parse(filePath).name}.kicad_pro`);
+  if (fs.existsSync(sibling)) {
+    return sibling;
+  }
+
+  try {
+    const entries = fs.readdirSync(path.dirname(filePath));
+    const projectEntry = entries.find((entry) => entry.endsWith('.kicad_pro'));
+    return projectEntry ? path.join(path.dirname(filePath), projectEntry) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function findFirstWorkspaceFile(
+  pattern: string,
+  exclude = '**/node_modules/**'
+): Promise<string | undefined> {
+  const files = await vscode.workspace.findFiles(pattern, exclude, 1);
+  return files[0]?.fsPath;
+}
