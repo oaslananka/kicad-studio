@@ -11,6 +11,11 @@ interface JsonRpcResponse<T> {
   };
 }
 
+interface RpcTransportResult<T> {
+  json: JsonRpcResponse<T>;
+  sessionId?: string | undefined;
+}
+
 export interface McpConnectionState {
   available: boolean;
   connected: boolean;
@@ -19,6 +24,8 @@ export interface McpConnectionState {
 
 export class McpClient {
   private lastInstall: McpInstallStatus = { found: false, source: 'none' };
+  private sessionId: string | undefined;
+  private initializePromise: Promise<void> | undefined;
 
   constructor(
     private readonly detector: McpDetector,
@@ -66,7 +73,9 @@ export class McpClient {
     }
 
     try {
-      await this.callTool('studio_push_context', context as unknown as Record<string, unknown>);
+      await this.callTool('studio_push_context', {
+        ...context
+      });
     } catch (error) {
       this.logger.debug(
         `MCP context push skipped: ${error instanceof Error ? error.message : String(error)}`
@@ -158,29 +167,115 @@ export class McpClient {
   }
 
   private async rpc<T>(method: string, params: Record<string, unknown>): Promise<T | undefined> {
-    const endpoint = `${this.getEndpoint()}/mcp`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method,
-        params
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    if (method !== 'initialize') {
+      await this.ensureInitialized();
     }
 
-    const json = (await response.json()) as JsonRpcResponse<T>;
+    const { json, sessionId } = await this.postJsonRpc<T>(method, params);
+    if (sessionId) {
+      this.sessionId = sessionId;
+    }
     if (json.error) {
       throw new Error(json.error.message ?? 'Unknown MCP error');
     }
     return json.result;
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (this.sessionId) {
+      return;
+    }
+    if (this.initializePromise) {
+      return this.initializePromise;
+    }
+
+    this.initializePromise = (async () => {
+      const { sessionId } = await this.postJsonRpc('initialize', {
+        protocolVersion: '2024-11-05',
+        clientInfo: {
+          name: 'kicad-studio',
+          version: '2.4.0-dev'
+        },
+        capabilities: {}
+      });
+      this.sessionId = sessionId;
+    })();
+
+    try {
+      await this.initializePromise;
+    } finally {
+      this.initializePromise = undefined;
+    }
+  }
+
+  private async postJsonRpc<T>(
+    method: string,
+    params: Record<string, unknown>
+  ): Promise<RpcTransportResult<T>> {
+    const baseEndpoint = this.getEndpoint();
+    const primaryEndpoint = `${baseEndpoint}/mcp`;
+    const requestBody = JSON.stringify({
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method,
+      params
+    });
+
+    const primaryResponse = await fetch(primaryEndpoint, {
+      method: 'POST',
+      headers: this.buildHeaders(),
+      body: requestBody
+    });
+
+    if (primaryResponse.status === 404 || primaryResponse.status === 405) {
+      const allowLegacySse = vscode.workspace
+        .getConfiguration()
+        .get<boolean>(SETTINGS.mcpAllowLegacySse, false);
+      if (!allowLegacySse) {
+        throw new Error(
+          `The configured MCP server at ${primaryEndpoint} does not expose Streamable HTTP. Upgrade kicad-mcp-pro or enable ${SETTINGS.mcpAllowLegacySse} to try the legacy /sse fallback.`
+        );
+      }
+
+      this.logger.warn('Falling back to legacy MCP /sse transport because allowLegacySse is enabled.');
+      return this.readRpcResponse<T>(
+        await fetch(`${baseEndpoint}/sse`, {
+          method: 'POST',
+          headers: this.buildHeaders(),
+          body: requestBody
+        })
+      );
+    }
+
+    return this.readRpcResponse<T>(primaryResponse);
+  }
+
+  private buildHeaders(): Record<string, string> {
+    return {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      ...(this.sessionId ? { 'MCP-Session-Id': this.sessionId } : {})
+    };
+  }
+
+  private async readRpcResponse<T>(response: Response): Promise<RpcTransportResult<T>> {
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const sessionId = response.headers.get('MCP-Session-Id') ?? undefined;
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('text/event-stream')) {
+      return {
+        json: parseSseJsonRpc<T>(await response.text()),
+        sessionId
+      };
+    }
+
+    return {
+      json: (await response.json()) as JsonRpcResponse<T>,
+      sessionId
+    };
   }
 }
 
@@ -210,4 +305,24 @@ function normalizeFixItem(value: unknown, index: number): FixItem {
         : 'pending',
     ...(typeof record['preview'] === 'string' ? { preview: record['preview'] } : {})
   };
+}
+
+function parseSseJsonRpc<T>(payload: string): JsonRpcResponse<T> {
+  const events = payload
+    .split(/\r?\n\r?\n/)
+    .map((chunk) =>
+      chunk
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice('data:'.length).trim())
+        .join('')
+    )
+    .filter(Boolean);
+
+  const lastEvent = events.at(-1);
+  if (!lastEvent) {
+    throw new Error('The MCP server returned an empty SSE payload.');
+  }
+
+  return JSON.parse(lastEvent) as JsonRpcResponse<T>;
 }

@@ -52,8 +52,12 @@ describe('createKiCanvasViewerHtml', () => {
     });
 
     expect(html).toContain("script-src  'nonce-");
+    expect(html).toContain("style-src   'nonce-");
     expect(html).toContain('blob:;');
     expect(html).toContain('worker-src  blob: vscode-resource:;');
+    expect(html).not.toContain('unsafe-inline');
+    expect(html).not.toContain('unsafe-eval');
+    expect(html).toContain('<style nonce="');
     expect(html).toContain("source.setAttribute('name', payload.fileName);");
     expect(html).toContain(
       "source.setAttribute('type', payload.fileType === 'board' ? 'board' : 'schematic');"

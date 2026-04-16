@@ -41,6 +41,9 @@ import {
 import { GitDiffDetector } from './git/gitDiffDetector';
 import { KiCadLibraryIndexer } from './library/libraryIndexer';
 import { LibrarySearchProvider } from './library/librarySearchProvider';
+import { registerLanguageModelChatProvider } from './lm/languageModelChatProvider';
+import { registerLanguageModelTools } from './lm/languageModelTools';
+import { registerMcpServerDefinitionProvider } from './lm/mcpServerDefinitionProvider';
 import { DesignIntentPanel } from './mcp/designIntentPanel';
 import { ContextBridge } from './mcp/contextBridge';
 import { McpClient } from './mcp/mcpClient';
@@ -289,6 +292,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     refreshMcpState
   });
 
+  context.subscriptions.push(
+    registerLanguageModelTools(context, {
+      logger,
+      checkService,
+      cliDetector,
+      cliRunner,
+      componentSearch,
+      libraryIndexer,
+      variantProvider,
+      diagnosticsCollection,
+      getStudioContext: buildStudioContext,
+      setLatestDrcRun: (value) => {
+        latestDrcRun = value;
+      }
+    })
+  );
+  registerMcpServerDefinitionProvider(context, mcpDetector, logger);
+  registerLanguageModelChatProvider(context, logger, buildStudioContext);
+
   void cliDetector.detect().then((cli) => {
     statusBar.update({ cli });
   });
@@ -308,7 +330,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   logger.info('KiCad Studio activated successfully.');
-  logger.info(`KiCad Studio activated in ${Date.now() - activationStartedAt}ms`);
+  const activationDurationMs = Date.now() - activationStartedAt;
+  logger.info(`KiCad Studio activated in ${activationDurationMs}ms`);
+  if (activationDurationMs > 500) {
+    logger.warn(`Activation exceeded 500ms (${activationDurationMs}ms).`);
+  }
 
   async function refreshContexts(): Promise<void> {
     const activeUri = getActiveResourceUri();
@@ -474,6 +500,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     activeFile: string | undefined;
     fileType: 'schematic' | 'pcb' | 'other';
     drcErrors: string[];
+    selectedNet?: string | undefined;
     selectedReference?: string | undefined;
     selectedArea?:
       | {
@@ -485,8 +512,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       | undefined;
     activeVariant?: string | undefined;
     mcpConnected?: boolean | undefined;
+    cursorPosition?:
+      | {
+          line: number;
+          character: number;
+        }
+      | undefined;
+    activeSheetPath?: string | undefined;
+    visibleLayers?: string[] | undefined;
   }> {
     const activeUri = getActiveResourceUri();
+    const activeEditor = vscode.window.activeTextEditor;
     const fileType =
       activeUri?.fsPath.endsWith('.kicad_sch')
         ? 'schematic'
@@ -507,6 +543,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         latestDrcRun?.diagnostics.map((diagnostic) => diagnostic.message).slice(0, 20) ?? [],
       selectedReference: viewerState?.selectedReference,
       selectedArea: viewerState?.selectedArea,
+      cursorPosition: activeEditor
+        ? {
+            line: activeEditor.selection.active.line,
+            character: activeEditor.selection.active.character
+          }
+        : undefined,
+      activeSheetPath:
+        fileType === 'schematic' && activeUri
+          ? path.relative(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '', activeUri.fsPath)
+          : undefined,
+      visibleLayers: viewerState?.activeLayers,
       activeVariant: await variantProvider.getActiveVariantName(),
       mcpConnected: mcpState.connected
     };
@@ -961,6 +1008,83 @@ function registerCommands(
       await services.context.secrets.delete(OCTOPART_SECRET_KEY);
       void vscode.window.showInformationMessage('Stored KiCad Studio secrets cleared.');
     }),
+    vscode.commands.registerCommand(COMMANDS.showStoredSecrets, async () => {
+      const aiSecret = await services.context.secrets.get(AI_SECRET_KEY);
+      const octopartSecret = await services.context.secrets.get(OCTOPART_SECRET_KEY);
+      const configured = [
+        aiSecret ? 'AI provider key' : undefined,
+        octopartSecret ? 'Octopart/Nexar key' : undefined
+      ].filter(Boolean);
+      void vscode.window.showInformationMessage(
+        configured.length
+          ? `Stored secrets: ${configured.join(', ')}`
+          : 'No KiCad Studio secrets are currently stored.'
+      );
+    }),
+    vscode.commands.registerCommand(COMMANDS.manageChatProvider, async () => {
+      const picked = await vscode.window.showQuickPick(
+        [
+          {
+            label: 'Set Claude API key',
+            description: 'Store the API key used by the KiCad Studio chat provider.',
+            action: 'set-key'
+          },
+          {
+            label: 'Pick Claude model',
+            description: 'Choose the model string exposed by the KiCad Studio chat provider.',
+            action: 'pick-model'
+          },
+          {
+            label: 'Test chat provider',
+            description: 'Verify the configured Claude-backed provider can answer a test request.',
+            action: 'test'
+          }
+        ],
+        {
+          title: 'Manage KiCad Studio chat provider',
+          placeHolder: 'Choose a KiCad Studio Claude provider action'
+        }
+      );
+      if (!picked) {
+        return;
+      }
+
+      if (picked.action === 'set-key') {
+        await vscode.commands.executeCommand(COMMANDS.setAiApiKey);
+        return;
+      }
+
+      if (picked.action === 'pick-model') {
+        const currentModel = vscode.workspace
+          .getConfiguration()
+          .get<string>(SETTINGS.aiModel, '');
+        const model = await vscode.window.showInputBox({
+          title: 'Claude model for KiCad Studio chat provider',
+          value: currentModel,
+          placeHolder: 'claude-sonnet-4-6',
+          prompt: 'Leave empty to use the default Claude model.'
+        });
+        if (typeof model !== 'string') {
+          return;
+        }
+
+        await vscode.workspace
+          .getConfiguration()
+          .update(SETTINGS.aiProvider, 'claude', vscode.ConfigurationTarget.Global);
+        await vscode.workspace
+          .getConfiguration()
+          .update(SETTINGS.aiModel, model.trim(), vscode.ConfigurationTarget.Global);
+        void vscode.window.showInformationMessage('KiCad Studio chat provider settings updated.');
+        return;
+      }
+
+      if (picked.action === 'test') {
+        await vscode.workspace
+          .getConfiguration()
+          .update(SETTINGS.aiProvider, 'claude', vscode.ConfigurationTarget.Global);
+        await vscode.commands.executeCommand(COMMANDS.testAiConnection);
+      }
+    }),
     vscode.commands.registerCommand(COMMANDS.setupMcpIntegration, async () => {
       const install = await services.mcpClient.detectInstall();
       if (!install.found) {
@@ -981,7 +1105,28 @@ function registerCommands(
         return;
       }
       const detector = new McpDetector();
-      await detector.generateMcpJson(root, install);
+      const profile = await vscode.window.showQuickPick(
+        [
+          'full',
+          'minimal',
+          'pcb_only',
+          'schematic_only',
+          'manufacturing',
+          'high_speed',
+          'power',
+          'simulation',
+          'analysis',
+          'agent_full'
+        ],
+        {
+          title: 'Select kicad-mcp-pro profile',
+          placeHolder: 'Choose the MCP profile to write into .vscode/mcp.json'
+        }
+      );
+      if (!profile) {
+        return;
+      }
+      await detector.generateMcpJson(root, install, profile);
       await services.refreshMcpState();
     }),
     vscode.commands.registerCommand(COMMANDS.openDesignIntent, () => {

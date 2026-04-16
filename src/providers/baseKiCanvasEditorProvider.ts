@@ -4,15 +4,16 @@ import * as vscode from 'vscode';
 import {
   COMMANDS,
   SETTINGS,
+  VIEWER_DEFAULT_LARGE_FILE_THRESHOLD_BYTES,
   VIEWER_HIDDEN_CACHE_RELEASE_MS,
   WEBVIEW_MESSAGE_DEBOUNCE_MS
 } from '../constants';
 import type { ViewerMetadata, ViewerState } from '../types';
 import { bufferToBase64 } from '../utils/fileUtils';
+import { asNumber, asRecord, asString, hasType, isRecord } from '../utils/webviewMessages';
 import { createKiCanvasViewerHtml, createViewerErrorHtml, kicanvasUri } from './viewerHtml';
 
 const PROGRESS_INLINE_WARNING_BYTES = 1 * 1024 * 1024;
-const MAX_INLINE_INTERACTIVE_BYTES = 10 * 1024 * 1024;
 
 interface ViewerPayload {
   fileName: string;
@@ -142,7 +143,10 @@ export abstract class BaseKiCanvasEditorProvider
             }, VIEWER_HIDDEN_CACHE_RELEASE_MS);
           }
         }),
-        webviewPanel.webview.onDidReceiveMessage(async (message) => {
+        webviewPanel.webview.onDidReceiveMessage(async (message: unknown) => {
+          if (!hasType(message, VIEWER_OUTBOUND_MESSAGE_TYPES)) {
+            return;
+          }
           if (message.type === 'openInKiCad') {
             await vscode.commands.executeCommand(COMMANDS.openInKiCad, document.uri);
           }
@@ -151,36 +155,41 @@ export abstract class BaseKiCanvasEditorProvider
           }
           if (message.type === 'viewerState') {
             const info = this.panelInfo.get(webviewPanel);
-            if (info) {
-              info.state = message.payload as ViewerState;
+            const nextState = readViewerState(message.payload);
+            if (info && nextState) {
+              info.state = nextState;
               this.stateByUri.set(document.uri.toString(), info.state);
             }
           }
           if (message.type === 'selectionChanged') {
             const info = this.panelInfo.get(webviewPanel);
+            const payload = readViewerSelection(message.payload);
             if (info) {
               info.state = {
                 ...(info.state ?? { zoom: 1, grid: false, theme: this.theme }),
-                ...(message.payload as Partial<ViewerState>)
+                ...payload
               };
               this.stateByUri.set(document.uri.toString(), info.state);
             }
           }
-          if (message.type === 'exportPng' && typeof message.payload?.dataUrl === 'string') {
-            await this.exportPngSnapshot(document.uri, String(message.payload.dataUrl));
+          if (message.type === 'exportPng') {
+            const payload = asRecord(message.payload);
+            const dataUrl = asString(payload?.['dataUrl']);
+            if (dataUrl) {
+              await this.exportPngSnapshot(document.uri, dataUrl);
+            }
           }
           if (message.type === 'exportSvg') {
             await vscode.commands.executeCommand(COMMANDS.exportViewerSvg, document.uri);
           }
           if (message.type === 'componentSelected') {
             const info = this.panelInfo.get(webviewPanel);
+            const payload = asRecord(message.payload);
+            const reference = asString(payload?.['reference']);
             if (info) {
               info.state = {
                 ...(info.state ?? { zoom: 1, grid: false, theme: this.theme }),
-                selectedReference:
-                  typeof message.payload?.reference === 'string'
-                    ? String(message.payload.reference)
-                    : info.state?.selectedReference
+                selectedReference: reference ?? info.state?.selectedReference
               };
               this.stateByUri.set(document.uri.toString(), info.state);
             }
@@ -189,7 +198,11 @@ export abstract class BaseKiCanvasEditorProvider
       );
       await this.postFile(webviewPanel, document.uri);
     } catch (error) {
-      webviewPanel.webview.html = createViewerErrorHtml(path.basename(document.uri.fsPath), error);
+      webviewPanel.webview.html = createViewerErrorHtml(
+        path.basename(document.uri.fsPath),
+        error,
+        webviewPanel.webview.cspSource
+      );
     }
   }
 
@@ -273,12 +286,21 @@ export abstract class BaseKiCanvasEditorProvider
           )
         : await vscode.workspace.fs.readFile(uri);
     const text = Buffer.from(bytes).toString('utf8');
-    const canInline = bytes.byteLength <= MAX_INLINE_INTERACTIVE_BYTES;
+    const largeFileThresholdBytes = Math.max(
+      1,
+      vscode.workspace
+        .getConfiguration()
+        .get<number>(
+          SETTINGS.viewerLargeFileThresholdBytes,
+          VIEWER_DEFAULT_LARGE_FILE_THRESHOLD_BYTES
+        )
+    );
+    const canInline = bytes.byteLength <= largeFileThresholdBytes;
     const nextPayload: CachedFilePayload = {
       base64: canInline ? bufferToBase64(bytes) : '',
       disabledReason: canInline
         ? ''
-        : `Interactive render is disabled for files larger than ${(MAX_INLINE_INTERACTIVE_BYTES / 1024 / 1024).toFixed(0)} MB. Metadata is still available in the side panel.`,
+        : `Interactive render is disabled for files larger than ${(largeFileThresholdBytes / 1024 / 1024).toFixed(0)} MB. Metadata is still available in the side panel.`,
       mtimeMs: stat.mtimeMs,
       metadata: this.buildViewerMetadata(uri, text)
     };
@@ -346,4 +368,86 @@ export abstract class BaseKiCanvasEditorProvider
     await vscode.workspace.fs.writeFile(saveUri, Buffer.from(base64, 'base64'));
     void vscode.window.showInformationMessage(`Saved viewer snapshot to ${path.basename(saveUri.fsPath)}.`);
   }
+}
+
+const VIEWER_OUTBOUND_MESSAGE_TYPES = [
+  'openInKiCad',
+  'requestRefresh',
+  'viewerState',
+  'selectionChanged',
+  'exportPng',
+  'exportSvg',
+  'componentSelected'
+];
+
+function readViewerState(value: unknown): ViewerState | undefined {
+  const payload = asRecord(value);
+  if (!payload) {
+    return undefined;
+  }
+  const zoom = asNumber(payload?.['zoom']);
+  const grid = payload?.['grid'];
+  const theme = asString(payload?.['theme']);
+  if (zoom === undefined || typeof grid !== 'boolean' || !theme) {
+    return undefined;
+  }
+
+  const selectedArea = readSelectedArea(payload['selectedArea']);
+  const activeLayers = readStringArray(payload['activeLayers']);
+  return {
+    zoom,
+    grid,
+    theme,
+    ...(typeof payload['selectedReference'] === 'string'
+      ? { selectedReference: payload['selectedReference'] }
+      : {}),
+    ...(selectedArea ? { selectedArea } : {}),
+    ...(activeLayers ? { activeLayers } : {})
+  };
+}
+
+function readViewerSelection(value: unknown): Partial<ViewerState> {
+  const payload = asRecord(value);
+  if (!payload) {
+    return {};
+  }
+
+  const selectedArea = readSelectedArea(payload['selectedArea']);
+  const activeLayers = readStringArray(payload['activeLayers']);
+  return {
+    ...(typeof payload['selectedReference'] === 'string'
+      ? { selectedReference: payload['selectedReference'] }
+      : {}),
+    ...(selectedArea ? { selectedArea } : {}),
+    ...(activeLayers ? { activeLayers } : {})
+  };
+}
+
+function readSelectedArea(value: unknown):
+  | {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    }
+  | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const x1 = asNumber(value['x1']);
+  const y1 = asNumber(value['y1']);
+  const x2 = asNumber(value['x2']);
+  const y2 = asNumber(value['y2']);
+  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) {
+    return undefined;
+  }
+  return { x1, y1, x2, y2 };
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter((entry): entry is string => typeof entry === 'string');
 }

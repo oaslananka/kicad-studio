@@ -2,7 +2,7 @@
   "name": "kicadstudio",
   "displayName": "KiCad Studio",
   "description": "The complete KiCad development environment for VS Code — view schematics & PCBs, run DRC/ERC, export production files, search components, and get AI-powered design assistance.",
-  "version": "2.3.3",
+  "version": "2.4.0",
   "publisher": "oaslananka",
   "engines": {
     "vscode": "^1.95.0",
@@ -499,6 +499,16 @@
         "category": "KiCad Setup"
       },
       {
+        "command": "kicadstudio.showStoredSecrets",
+        "title": "KiCad: Show Stored Secret Keys",
+        "category": "KiCad Setup"
+      },
+      {
+        "command": "kicadstudio.manageChatProvider",
+        "title": "KiCad: Manage Chat Provider",
+        "category": "KiCad AI"
+      },
+      {
         "command": "kicadstudio.export3DPdf",
         "title": "KiCad: Export 3D PDF",
         "category": "KiCad Export"
@@ -740,6 +750,12 @@
           "command": "kicadstudio.setupMcpIntegration"
         },
         {
+          "command": "kicadstudio.showStoredSecrets"
+        },
+        {
+          "command": "kicadstudio.manageChatProvider"
+        },
+        {
           "command": "kicadstudio.openDesignIntent",
           "when": "kicadstudio.mcpConnected"
         },
@@ -880,6 +896,11 @@
           ],
           "description": "BOM fields to include and their order."
         },
+        "kicadstudio.cli.defineVars": {
+          "type": "object",
+          "default": {},
+          "description": "Optional KiCad CLI --define-var values that are passed to compatible kicad-cli commands."
+        },
         "kicadstudio.viewer.theme": {
           "type": "string",
           "default": "dark",
@@ -894,6 +915,12 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically refresh viewer when file is saved."
+        },
+        "kicadstudio.viewer.largeFileThresholdBytes": {
+          "type": "number",
+          "default": 10485760,
+          "minimum": 1,
+          "description": "Maximum file size for fully interactive embedded viewing before KiCad Studio falls back to metadata-only mode."
         },
         "kicadstudio.viewer.syncThemeWithVscode": {
           "type": "boolean",
@@ -957,6 +984,11 @@
           ],
           "description": "Language for AI-generated answers. Extension UI language follows VS Code locale packs."
         },
+        "kicadstudio.ai.allowTools": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow KiCad Studio to register language-model tools when the host VS Code build supports them."
+        },
         "kicadstudio.logLevel": {
           "type": "string",
           "enum": [
@@ -987,6 +1019,11 @@
           "type": "string",
           "default": "http://127.0.0.1:27185",
           "description": "kicad-mcp-pro HTTP endpoint when the server is running in HTTP mode."
+        },
+        "kicadstudio.mcp.allowLegacySse": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow a best-effort fallback to the legacy /sse MCP transport when Streamable HTTP is unavailable."
         },
         "kicadstudio.mcp.pushContext": {
           "type": "boolean",
@@ -1125,6 +1162,266 @@
           }
         ]
       }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "kicadstudio.mcpServer",
+        "label": "KiCad MCP Pro (bundled)"
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "kicadstudio_runDrc",
+        "tags": [
+          "kicad",
+          "drc",
+          "pcb"
+        ],
+        "toolReferenceName": "runDrc",
+        "displayName": "Run KiCad DRC",
+        "userDescription": "Run KiCad DRC for the current or specified board.",
+        "modelDescription": "Runs KiCad DRC on a .kicad_pcb file and returns a diagnostic summary plus machine-readable diagnostics. Use this when the user asks to check PCB design-rule violations.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(beaker)",
+        "when": "kicadstudio.hasProject",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "pcbPath": {
+              "type": "string",
+              "description": "Optional absolute path to the .kicad_pcb file. When omitted, KiCad Studio uses the active board or the first board in the workspace."
+            }
+          }
+        }
+      },
+      {
+        "name": "kicadstudio_runErc",
+        "tags": [
+          "kicad",
+          "erc",
+          "schematic"
+        ],
+        "toolReferenceName": "runErc",
+        "displayName": "Run KiCad ERC",
+        "userDescription": "Run KiCad ERC for the current or specified schematic.",
+        "modelDescription": "Runs KiCad ERC on a .kicad_sch file and returns a diagnostic summary plus machine-readable diagnostics. Use this when the user asks to check schematic electrical-rule violations.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(check-all)",
+        "when": "kicadstudio.hasProject",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "schPath": {
+              "type": "string",
+              "description": "Optional absolute path to the .kicad_sch file. When omitted, KiCad Studio uses the active schematic or the first schematic in the workspace."
+            }
+          }
+        }
+      },
+      {
+        "name": "kicadstudio_exportGerbers",
+        "tags": [
+          "kicad",
+          "gerber",
+          "manufacturing"
+        ],
+        "toolReferenceName": "exportGerbers",
+        "displayName": "Export KiCad Gerbers",
+        "userDescription": "Export Gerber fabrication files for the current or specified PCB.",
+        "modelDescription": "Exports Gerber fabrication files for a KiCad board into the configured KiCad Studio output directory. Use this only when the user explicitly wants manufacturing files created.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(package)",
+        "when": "kicadstudio.hasProject",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "pcbPath": {
+              "type": "string",
+              "description": "Optional absolute path to the .kicad_pcb file to export."
+            },
+            "variant": {
+              "type": "string",
+              "description": "Optional KiCad 10 variant name to pass to supported kicad-cli exports."
+            }
+          }
+        }
+      },
+      {
+        "name": "kicadstudio_openFile",
+        "tags": [
+          "kicad",
+          "editor"
+        ],
+        "toolReferenceName": "openFile",
+        "displayName": "Open File",
+        "userDescription": "Open a local file or URI in the editor.",
+        "modelDescription": "Opens a file or URI in VS Code so the user and subsequent tools can inspect it. Use when a chat request needs a specific document opened.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(go-to-file)",
+        "when": "kicadstudio.hasProject",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "description": "Absolute file path or URI to open."
+            }
+          },
+          "required": [
+            "uri"
+          ]
+        }
+      },
+      {
+        "name": "kicadstudio_searchComponent",
+        "tags": [
+          "kicad",
+          "component",
+          "search"
+        ],
+        "toolReferenceName": "searchComponent",
+        "displayName": "Search Components",
+        "userDescription": "Search online component sources configured in KiCad Studio.",
+        "modelDescription": "Searches Octopart/Nexar and LCSC through KiCad Studio and returns matching parts. Use when the user asks for component sourcing or part suggestions.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(search)",
+        "when": "kicadstudio.hasProject",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Part number, manufacturer part number, value, or descriptive query to search."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "kicadstudio_searchSymbol",
+        "tags": [
+          "kicad",
+          "symbol",
+          "library"
+        ],
+        "toolReferenceName": "searchSymbol",
+        "displayName": "Search Symbols",
+        "userDescription": "Search indexed KiCad symbol libraries.",
+        "modelDescription": "Searches the local KiCad symbol index and returns matching symbols by name, description, or keyword.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-namespace)",
+        "when": "kicadstudio.hasProject",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Symbol name, keyword, or description fragment to search."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "kicadstudio_searchFootprint",
+        "tags": [
+          "kicad",
+          "footprint",
+          "library"
+        ],
+        "toolReferenceName": "searchFootprint",
+        "displayName": "Search Footprints",
+        "userDescription": "Search indexed KiCad footprint libraries.",
+        "modelDescription": "Searches the local KiCad footprint index and returns matching footprints by name, description, or tags.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(circuit-board)",
+        "when": "kicadstudio.hasProject",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Footprint name, tag, or description fragment to search."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "kicadstudio_getActiveContext",
+        "tags": [
+          "kicad",
+          "context"
+        ],
+        "toolReferenceName": "getActiveContext",
+        "displayName": "Get Active KiCad Context",
+        "userDescription": "Return the current KiCad Studio editor and diagnostics context.",
+        "modelDescription": "Returns the active file, file type, active variant, DRC summary inputs, cursor position, and other live KiCad Studio context. Use when the model needs up-to-date project state before deciding on another tool call.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(info)",
+        "when": "kicadstudio.hasProject",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "kicadstudio_listVariants",
+        "tags": [
+          "kicad",
+          "variants"
+        ],
+        "toolReferenceName": "listVariants",
+        "displayName": "List KiCad Variants",
+        "userDescription": "List the KiCad 10 design variants known to the workspace.",
+        "modelDescription": "Returns the available KiCad design variants and override counts. Use when the user asks which variants exist or before switching variants.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(list-tree)",
+        "when": "kicadstudio.hasVariants",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "kicadstudio_switchVariant",
+        "tags": [
+          "kicad",
+          "variants"
+        ],
+        "toolReferenceName": "switchVariant",
+        "displayName": "Switch KiCad Variant",
+        "userDescription": "Change the active KiCad design variant.",
+        "modelDescription": "Sets the active KiCad 10 variant in the project file. Use only when the user explicitly wants to switch variants.",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(git-branch)",
+        "when": "kicadstudio.hasVariants",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "variant": {
+              "type": "string",
+              "description": "Exact KiCad variant name to activate."
+            }
+          },
+          "required": [
+            "variant"
+          ]
+        }
+      }
+    ],
+    "languageModelChatProviders": [
+      {
+        "vendor": "kicadstudio",
+        "displayName": "KiCad Studio",
+        "managementCommand": "kicadstudio.manageChatProvider"
+      }
     ]
   },
   "scripts": {
@@ -1135,6 +1432,7 @@
     "build:prod": "npm run build",
     "watch": "webpack --mode development --watch",
     "lint": "eslint src test scripts --ext .ts,.js",
+    "audit:ci": "npm audit --audit-level=moderate",
     "compile-tests": "tsc -p tsconfig.test.json",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "jest --runInBand",

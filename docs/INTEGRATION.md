@@ -11,6 +11,7 @@ KiCad Studio integrates with `kicad-mcp-pro` without forcing it on every user. T
 - `uvx kicad-mcp-pro --version`
 - `kicad-mcp-pro --version`
 - `pip show kicad-mcp-pro`
+- `pipx list`
 
 If the tool is detected and the workspace does not already contain `.vscode/mcp.json`, KiCad Studio can offer to generate that file automatically.
 
@@ -23,6 +24,8 @@ The generated config uses a stdio server entry and sets:
 
 This keeps the bootstrap lightweight while remaining compatible with external MCP clients such as Claude Code and Cursor.
 
+On compatible VS Code versions, KiCad Studio also contributes an MCP server definition provider so Copilot agent mode can discover `kicad-mcp-pro` without a checked-in workspace config.
+
 ## Status Model
 
 The extension tracks two MCP states:
@@ -31,6 +34,16 @@ The extension tracks two MCP states:
 - Connected: the configured HTTP endpoint responded to an MCP request.
 
 The status bar reflects these states through `MCP Setup`, `MCP Available`, or `MCP Connected`.
+
+## HTTP Transport
+
+The extension-side MCP client targets Streamable HTTP:
+
+- `POST /mcp`
+- `Accept: application/json, text/event-stream`
+- `MCP-Session-Id` is captured from the initialize response and sent on subsequent requests
+
+If a server responds with `404` or `405`, KiCad Studio does not silently fall back to legacy `/sse` transport unless `kicadstudio.mcp.allowLegacySse` is explicitly enabled.
 
 ## Context Bridge
 
@@ -41,6 +54,9 @@ When enabled, KiCad Studio pushes:
 - recent DRC errors
 - selected reference
 - selected lasso area
+- cursor position
+- active sheet path
+- visible PCB layers
 - active variant
 
 This lets external AI tooling understand what the user currently has open in the editor.

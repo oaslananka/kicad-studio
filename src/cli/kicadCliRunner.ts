@@ -1,9 +1,12 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { spawn } from 'node:child_process';
 import * as vscode from 'vscode';
-import { CLI_TIMEOUT_MS } from '../constants';
-import { KiCadCliNotFoundError, KiCadCliTimeoutError } from '../errors';
+import { CLI_TIMEOUT_MS, SETTINGS } from '../constants';
+import { CliExitError, KiCadCliNotFoundError, KiCadCliTimeoutError } from '../errors';
 import type { CliResult, CliRunOptions } from '../types';
 import { Logger } from '../utils/logger';
+import { findSiblingProjectFile } from '../utils/pathUtils';
 import { KiCadCliDetector } from './kicadCliDetector';
 
 /**
@@ -42,9 +45,13 @@ export class KiCadCliRunner {
         title: options.progressTitle
       },
       async (progress, token) => {
-        token.onCancellationRequested(() => this.cancelAll());
+        const progressAbort = new AbortController();
+        token.onCancellationRequested(() =>
+          progressAbort.abort(new Error(`KiCad command cancelled: ${options.command.join(' ')}`))
+        );
         const result = await this.run<T>({
           ...options,
+          signal: composeAbortSignals(options.signal, progressAbort.signal),
           onProgress: (message) => {
             if (message) {
               progress.report({ message: message.slice(0, 120) });
@@ -59,7 +66,7 @@ export class KiCadCliRunner {
 
   cancelAll(): void {
     for (const controller of this.controllers) {
-      controller.abort();
+      controller.abort(new Error('KiCad commands cancelled.'));
     }
     this.controllers.clear();
   }
@@ -70,23 +77,25 @@ export class KiCadCliRunner {
       throw new KiCadCliNotFoundError();
     }
 
+    const command = this.buildCommandWithDefineVars(options.command, options.cwd);
     const controller = new AbortController();
+    const signal = composeAbortSignals(options.signal, controller.signal);
     this.controllers.add(controller);
     const startedAt = Date.now();
-    this.logger.info(`Running ${detected.path} ${options.command.join(' ')}`);
+    this.logger.info(`Running ${detected.path} ${command.join(' ')}`);
 
     return new Promise<CliResult<T>>((resolve, reject) => {
-      const child = spawn(detected.path, options.command, {
+      const child = spawn(detected.path, command, {
         cwd: options.cwd,
         env: process.env,
-        signal: controller.signal,
+        signal,
         stdio: ['ignore', 'pipe', 'pipe']
       });
 
       let stdout = '';
       let stderr = '';
       const timeout = setTimeout(() => {
-        controller.abort(new KiCadCliTimeoutError(options.command.join(' '), CLI_TIMEOUT_MS));
+        controller.abort(new KiCadCliTimeoutError(command.join(' '), CLI_TIMEOUT_MS));
       }, CLI_TIMEOUT_MS);
 
       const finish = (handler: () => void): void => {
@@ -125,9 +134,12 @@ export class KiCadCliRunner {
 
           if ((exitCode ?? -1) !== 0) {
             reject(
-              new Error(
-                this.normalizeCliFailure(stderr || stdout || `kicad-cli exited with code ${exitCode ?? -1}`)
-              )
+              new CliExitError({
+                command: command.join(' '),
+                code: exitCode ?? -1,
+                stdout,
+                stderr: this.normalizeCliFailure(stderr || stdout || '')
+              })
             );
             return;
           }
@@ -145,9 +157,10 @@ export class KiCadCliRunner {
       return new KiCadCliNotFoundError();
     }
     if (error instanceof Error && error.name === 'AbortError') {
-      return error.cause instanceof KiCadCliTimeoutError
-        ? error.cause
-        : new Error(`KiCad command cancelled before completion: ${command}.`);
+      if (error.cause instanceof Error) {
+        return error.cause;
+      }
+      return new Error(`KiCad command cancelled before completion: ${command}.`);
     }
     return error instanceof Error ? error : new Error(String(error));
   }
@@ -161,4 +174,61 @@ export class KiCadCliRunner {
     }
     return `KiCad command failed.\n${message}`;
   }
+
+  private buildCommandWithDefineVars(command: string[], cwd: string): string[] {
+    const configuredVars = vscode.workspace
+      .getConfiguration()
+      .get<Record<string, string>>(SETTINGS.cliDefineVars, {});
+    const projectVars = this.readProjectTextVariables(command, cwd);
+    const mergedVars = {
+      ...projectVars,
+      ...configuredVars
+    };
+
+    const defineArgs = Object.entries(mergedVars)
+      .filter((entry): entry is [string, string] => typeof entry[0] === 'string' && typeof entry[1] === 'string')
+      .flatMap(([key, value]) => ['--define-var', `${key}=${value}`]);
+
+    return defineArgs.length ? [...defineArgs, ...command] : command;
+  }
+
+  private readProjectTextVariables(command: string[], cwd: string): Record<string, string> {
+    const targetFile = command.find((entry) => entry.endsWith('.kicad_pro') || entry.endsWith('.kicad_sch') || entry.endsWith('.kicad_pcb'));
+    const projectFile = targetFile
+      ? findSiblingProjectFile(path.isAbsolute(targetFile) ? targetFile : path.join(cwd, targetFile))
+      : undefined;
+    if (!projectFile || !fs.existsSync(projectFile)) {
+      return {};
+    }
+
+    try {
+      const raw = JSON.parse(fs.readFileSync(projectFile, 'utf8')) as {
+        text_variables?: Record<string, string> | undefined;
+      };
+      return raw.text_variables ?? {};
+    } catch {
+      return {};
+    }
+  }
+}
+
+function composeAbortSignals(
+  primary: AbortSignal | undefined,
+  secondary: AbortSignal
+): AbortSignal {
+  if (!primary) {
+    return secondary;
+  }
+  if (primary.aborted) {
+    return primary;
+  }
+
+  const controller = new AbortController();
+  const abortFrom = (source: AbortSignal): void => {
+    controller.abort(source.reason);
+  };
+
+  primary.addEventListener('abort', () => abortFrom(primary), { once: true });
+  secondary.addEventListener('abort', () => abortFrom(secondary), { once: true });
+  return controller.signal;
 }

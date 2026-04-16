@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { SEARCH_DEBOUNCE_MS, SETTINGS } from '../constants';
 import type { ComponentSearchResult } from '../types';
+import { asRecord, asString, hasType } from '../utils/webviewMessages';
 import { openDatasheet } from './datasheetOpener';
 import { ComponentSearchCache } from './componentSearchCache';
 import { LcscClient } from './lcscClient';
@@ -36,18 +37,12 @@ export class ComponentSearchService {
     }
 
     await new Promise((resolve) => setTimeout(resolve, SEARCH_DEBOUNCE_MS));
-    const results: ComponentSearchResult[] = [];
-    const selectedSources = new Set(sourceChoices.map((item) => item.value));
-
-    if (selectedSources.has('octopart')) {
-      results.push(...(await this.searchWithCache('octopart', query)));
-    }
-    if (selectedSources.has('lcsc')) {
-      results.push(...(await this.searchWithCache('lcsc', query)));
-    }
-    if (!results.length && selectedSources.has('octopart') && vscode.workspace.getConfiguration().get<boolean>(SETTINGS.enableLCSC, true)) {
-      results.push(...(await this.searchWithCache('lcsc', query)));
-    }
+    const results = await this.searchQuery(
+      query,
+      sourceChoices
+        .map((item) => item.value)
+        .filter((value): value is 'octopart' | 'lcsc' => value === 'octopart' || value === 'lcsc')
+    );
 
     const picked = await vscode.window.showQuickPick(
       results.map((result) => ({
@@ -65,6 +60,30 @@ export class ComponentSearchService {
     await this.showDetails(picked.result);
   }
 
+  async searchQuery(
+    query: string,
+    sources: Array<'octopart' | 'lcsc'> = ['octopart', 'lcsc']
+  ): Promise<ComponentSearchResult[]> {
+    const results: ComponentSearchResult[] = [];
+    const selectedSources = new Set(sources);
+
+    if (selectedSources.has('octopart')) {
+      results.push(...(await this.searchWithCache('octopart', query)));
+    }
+    if (selectedSources.has('lcsc')) {
+      results.push(...(await this.searchWithCache('lcsc', query)));
+    }
+    if (
+      !results.length &&
+      selectedSources.has('octopart') &&
+      vscode.workspace.getConfiguration().get<boolean>(SETTINGS.enableLCSC, true)
+    ) {
+      results.push(...(await this.searchWithCache('lcsc', query)));
+    }
+
+    return results;
+  }
+
   private async showDetails(result: ComponentSearchResult): Promise<void> {
     if (!this.detailsPanel) {
       this.detailsPanel = vscode.window.createWebviewPanel(
@@ -76,12 +95,19 @@ export class ComponentSearchService {
       this.detailsPanel.onDidDispose(() => {
         this.detailsPanel = undefined;
       });
-      this.detailsPanel.webview.onDidReceiveMessage(async (message) => {
-        if (message.type === 'datasheet' && message.url) {
-          await openDatasheet(String(message.url));
+      this.detailsPanel.webview.onDidReceiveMessage(async (message: unknown) => {
+        if (!hasType(message, ['datasheet', 'copy-mpn'])) {
+          return;
         }
-        if (message.type === 'copy-mpn' && message.mpn) {
-          await vscode.env.clipboard.writeText(String(message.mpn));
+
+        const record = asRecord(message);
+        const url = asString(record?.['url']);
+        const mpn = asString(record?.['mpn']);
+        if (message.type === 'datasheet' && url) {
+          await openDatasheet(url);
+        }
+        if (message.type === 'copy-mpn' && mpn) {
+          await vscode.env.clipboard.writeText(mpn);
         }
       });
     }
@@ -93,7 +119,7 @@ export class ComponentSearchService {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data: ${cspSource}; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
   <style nonce="${nonce}">
     body { font-family: Segoe UI, sans-serif; background: #0f172a; color: #e2e8f0; padding: 16px; }
     button { margin-right: 8px; }

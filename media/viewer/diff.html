@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'none';
-    script-src {{cspSource}} blob:;
-    style-src {{cspSource}} 'unsafe-inline';
+    script-src 'nonce-{{scriptNonce}}' {{cspSource}} blob:;
+    style-src {{cspSource}};
     worker-src {{cspSource}} blob:;
     connect-src {{cspSource}} blob: data:;
     font-src {{cspSource}};
@@ -47,7 +47,7 @@
       </div>
     </div>
   </div>
-  <script src="{{kicanvasUri}}"></script>
-  <script src="{{scriptUri}}"></script>
+  <script nonce="{{scriptNonce}}" src="{{kicanvasUri}}"></script>
+  <script nonce="{{scriptNonce}}" src="{{scriptUri}}"></script>
 </body>
 </html>

@@ -27,6 +27,15 @@ KiCad 10 introduces workflow changes that matter to extension users:
 - active design variants can be switched
 - tuning profiles are visible in the PCB metadata sidebar
 
+## KiCad 10 Checklist
+
+- `KiCad: Detect kicad-cli` reports a KiCad 10.x binary.
+- The `Variants` view is visible when a project contains native KiCad 10 variant data.
+- `KiCad: Export 3D PDF` appears and succeeds on a board file.
+- BOM and export commands can pass an active variant automatically.
+- `.kicad_dru` files highlight correctly and show hover help for rule keywords.
+- MCP context push includes the active variant and current visible layer set when MCP is enabled.
+
 ## Known Caveats
 
 - Upstream KiCanvas support for newer KiCad 10 entities may continue to improve over time.

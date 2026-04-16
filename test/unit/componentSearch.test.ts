@@ -153,6 +153,8 @@ describe('ComponentSearchCache', () => {
     expect(vscode.env.openExternal).toHaveBeenCalled();
     expect(panelMock.panel.title).toContain('STM32F411');
     expect(panelMock.panel.webview.html).toContain('Open Datasheet');
+    expect(panelMock.panel.webview.html).toContain('img-src vscode-resource: data:;');
+    expect(panelMock.panel.webview.html).not.toContain('img-src https:');
   });
 
   it('rejects non-http datasheet URLs before opening externally', async () => {
@@ -220,5 +222,26 @@ describe('ComponentSearchCache', () => {
 
     expect(vscode.window.createWebviewPanel).toHaveBeenCalled();
     expect(panelMock.panel.webview.html).toContain('STM32G0');
+  });
+
+  it('supports programmatic component queries for language model tools', async () => {
+    __setConfiguration({
+      'kicadstudio.componentSearch.enableLCSC': true
+    });
+    const context = createExtensionContextMock();
+    const cache = new ComponentSearchCache(context.globalState as unknown as vscode.Memento);
+    const octopart = {
+      search: jest.fn().mockResolvedValue([
+        { source: 'octopart', mpn: 'TPS5430', manufacturer: 'TI', description: 'Buck regulator', offers: [], specs: [] }
+      ])
+    };
+    const lcsc = { search: jest.fn().mockResolvedValue([]) };
+    const service = new ComponentSearchService(octopart as never, lcsc as never, cache);
+
+    const results = await service.searchQuery('TPS5430', ['octopart']);
+
+    expect(results).toHaveLength(1);
+    expect(octopart.search).toHaveBeenCalledWith('TPS5430');
+    expect(lcsc.search).not.toHaveBeenCalled();
   });
 });

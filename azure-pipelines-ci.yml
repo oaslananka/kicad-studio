@@ -36,6 +36,8 @@ stages:
               version: $(NodeVersion)
           - script: npm ci
             displayName: Install dependencies
+          - script: npm run audit:ci
+            displayName: Audit dependencies
           - script: npm run lint
             displayName: Lint
           - script: npx tsc -p tsconfig.json --noEmit
@@ -64,12 +66,14 @@ stages:
               version: $(NodeVersion)
           - script: npm ci
             displayName: Install dependencies
+          - script: npm run audit:ci
+            displayName: Audit dependencies
           - script: npm run build:prod
             displayName: Production build
-          - script: npm run check:bundle-size
-            displayName: Bundle size regression gate
           - script: npm run package
             displayName: Package VSIX
+          - script: npm run check:bundle-size
+            displayName: Bundle size regression gate
           - bash: |
               mkdir -p "$(Build.ArtifactStagingDirectory)"
               cp ./*.vsix "$(Build.ArtifactStagingDirectory)/"

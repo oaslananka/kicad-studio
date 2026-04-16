@@ -82,6 +82,16 @@ export class VariantProvider implements vscode.TreeDataProvider<KiCadVariant | V
     return this.variants.find((variant) => variant.isDefault)?.name;
   }
 
+  async listVariants(): Promise<KiCadVariant[]> {
+    await this.loadVariants();
+    return [...this.variants];
+  }
+
+  async getVariantByName(name: string): Promise<KiCadVariant | undefined> {
+    await this.loadVariants();
+    return this.variants.find((variant) => variant.name === name);
+  }
+
   async createVariant(): Promise<void> {
     const projectFile = await this.ensureProjectFile();
     if (!projectFile) {

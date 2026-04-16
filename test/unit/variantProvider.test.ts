@@ -220,6 +220,15 @@ describe('VariantProvider', () => {
     expect(children).toEqual([]);
   });
 
+  it('lists variants and looks them up by name', async () => {
+    const provider = new VariantProvider();
+
+    await expect(provider.listVariants()).resolves.toHaveLength(2);
+    await expect(provider.getVariantByName('No-RF')).resolves.toEqual(
+      expect.objectContaining({ name: 'No-RF' })
+    );
+  });
+
   it('falls back to a synthetic Default variant when the project has none yet', async () => {
     fs.writeFileSync(projectFile, JSON.stringify({}, null, 2), 'utf8');
     const provider = new VariantProvider();

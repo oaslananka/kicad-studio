@@ -120,12 +120,14 @@ export class NetlistViewProvider implements vscode.WebviewViewProvider, vscode.D
   }
 
   private getHtml(webview: vscode.Webview): string {
+    const nonce = createNonce();
     const template = fs.readFileSync(
       path.join(this.context.extensionUri.fsPath, 'media', 'viewer', 'netlist.html'),
       'utf8'
     );
     return template
       .replaceAll('{{cspSource}}', webview.cspSource)
+      .replaceAll('{{scriptNonce}}', nonce)
       .replaceAll('{{bomCssUri}}', webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'styles', 'bom.css')).toString())
       .replaceAll('{{scriptUri}}', webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'viewer', 'netlist.js')).toString());
   }
@@ -138,4 +140,13 @@ export class NetlistViewProvider implements vscode.WebviewViewProvider, vscode.D
     const files = await vscode.workspace.findFiles('**/*.kicad_sch', '**/node_modules/**', 1);
     return files[0]?.fsPath;
   }
+}
+
+function createNonce(): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let value = '';
+  for (let index = 0; index < 32; index += 1) {
+    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  }
+  return value;
 }

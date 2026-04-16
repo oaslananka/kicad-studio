@@ -7,6 +7,7 @@ import { BomParser } from '../bom/bomParser';
 import { BomWebviewManager } from '../bom/bomWebviewManager';
 import { SExpressionParser } from '../language/sExpressionParser';
 import { readTextFileSync } from '../utils/fileUtils';
+import { asRecord, asString, hasType } from '../utils/webviewMessages';
 
 export class BomViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly manager = new BomWebviewManager();
@@ -37,15 +38,22 @@ export class BomViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
     };
     webviewView.webview.html = this.getHtml(webviewView.webview);
-    webviewView.webview.onDidReceiveMessage(async (message) => {
+    webviewView.webview.onDidReceiveMessage(async (message: unknown) => {
+      if (!hasType(message, ['exportCsv', 'exportXlsx', 'rowSelected'])) {
+        return;
+      }
       if (message.type === 'exportCsv') {
         await vscode.commands.executeCommand(COMMANDS.exportBOMCSV);
       }
       if (message.type === 'exportXlsx') {
         await vscode.commands.executeCommand(COMMANDS.exportBOMXLSX);
       }
-      if (message.type === 'rowSelected' && message.payload?.reference) {
-        await this.revealReference(String(message.payload.reference));
+      if (message.type === 'rowSelected') {
+        const payload = asRecord(message.payload);
+        const reference = asString(payload?.['reference']);
+        if (reference) {
+          await this.revealReference(reference);
+        }
       }
     });
     void this.refresh();
@@ -90,12 +98,14 @@ export class BomViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   }
 
   private getHtml(webview: vscode.Webview): string {
+    const nonce = createNonce();
     const template = fs.readFileSync(
       path.join(this.context.extensionUri.fsPath, 'media', 'viewer', 'bom.html'),
       'utf8'
     );
     return template
       .replaceAll('{{cspSource}}', webview.cspSource)
+      .replaceAll('{{scriptNonce}}', nonce)
       .replaceAll('{{bomCssUri}}', webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'styles', 'bom.css')).toString())
       .replaceAll('{{scriptUri}}', webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'viewer', 'bom.js')).toString());
   }
@@ -108,4 +118,13 @@ export class BomViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const files = await vscode.workspace.findFiles('**/*.kicad_sch', '**/node_modules/**', 1);
     return files[0]?.fsPath;
   }
+}
+
+function createNonce(): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let value = '';
+  for (let index = 0; index < 32; index += 1) {
+    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  }
+  return value;
 }

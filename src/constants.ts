@@ -20,6 +20,7 @@ export const AI_MAX_TOKENS = 4096;
 export const AI_STREAM_TIMEOUT_MS = 120_000;
 export const AI_CHAT_MAX_HISTORY = 20;
 export const VIEWER_HIDDEN_CACHE_RELEASE_MS = 5 * 60 * 1000;
+export const VIEWER_DEFAULT_LARGE_FILE_THRESHOLD_BYTES = 10 * 1024 * 1024;
 export const EXPORT_PRESET_SETTING = 'kicadstudio.exportPresets';
 export const OCTOPART_SECRET_KEY = 'kicadstudio.secrets.octopart';
 export const AI_SECRET_KEY = 'kicadstudio.secrets.ai';
@@ -86,6 +87,8 @@ export const COMMANDS = {
   setOctopartApiKey: 'kicadstudio.setOctopartApiKey',
   setAiApiKey: 'kicadstudio.setAiApiKey',
   clearSecrets: 'kicadstudio.clearSecrets',
+  showStoredSecrets: 'kicadstudio.showStoredSecrets',
+  manageChatProvider: 'kicadstudio.manageChatProvider',
   export3DPdf: 'kicadstudio.export3DPdf',
   setupMcpIntegration: 'kicadstudio.setupMcpIntegration',
   openDesignIntent: 'kicadstudio.openDesignIntent',
@@ -128,20 +131,24 @@ export const SETTINGS = {
   ipcUnits: 'kicadstudio.ipc2581.units',
   bomGroupIdentical: 'kicadstudio.bom.groupIdentical',
   bomFields: 'kicadstudio.bom.fields',
+  cliDefineVars: 'kicadstudio.cli.defineVars',
   viewerTheme: 'kicadstudio.viewer.theme',
   viewerAutoRefresh: 'kicadstudio.viewer.autoRefresh',
+  viewerLargeFileThresholdBytes: 'kicadstudio.viewer.largeFileThresholdBytes',
   octopartApiKey: 'kicadstudio.componentSearch.octopartApiKey',
   enableLCSC: 'kicadstudio.componentSearch.enableLCSC',
   aiProvider: 'kicadstudio.ai.provider',
   aiApiKey: 'kicadstudio.ai.apiKey',
   aiModel: 'kicadstudio.ai.model',
   aiLanguage: 'kicadstudio.ai.language',
+  aiAllowTools: 'kicadstudio.ai.allowTools',
   aiOpenAIApiMode: 'kicadstudio.ai.openaiApiMode',
   logLevel: 'kicadstudio.logLevel',
   autoRunDRC: 'kicadstudio.drc.autoRunOnSave',
   autoRunERC: 'kicadstudio.erc.autoRunOnSave',
   mcpAutoDetect: 'kicadstudio.mcp.autoDetect',
   mcpEndpoint: 'kicadstudio.mcp.endpoint',
+  mcpAllowLegacySse: 'kicadstudio.mcp.allowLegacySse',
   mcpPushContext: 'kicadstudio.mcp.pushContext',
   viewerSyncTheme: 'kicadstudio.viewer.syncThemeWithVscode',
   viewerEnableLayerPanel: 'kicadstudio.viewer.enableLayerPanel',

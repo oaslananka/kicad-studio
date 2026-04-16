@@ -36,6 +36,8 @@ KiCad Studio turns VS Code into a practical KiCad workspace: view schematics and
 - Fabrication and documentation exports including Gerber, drill, IPC-2581, ODB++, DXF, GenCAD, IPC-D-356, BOM, netlist, 3D GLB/BREP/PLY, and 3D PDF.
 - Variants, DRC rules, and AI fix queue sidebars for KiCad 10-era workflows.
 - Optional AI providers: Claude, OpenAI, GitHub Copilot, and Gemini.
+- Agent-mode Language Model Tools for DRC/ERC, Gerber export, file opening, component search, library search, active-context reads, and variant switching.
+- Optional Claude-backed Language Model Chat Provider registration for compatible VS Code builds.
 - `kicad-mcp-pro` bootstrap, context bridge, and design intent form panel.
 - Local KiCad symbol and footprint indexing plus Octopart/Nexar and LCSC component search.
 - Azure-first CI/CD with manual GitHub fallback workflows.
@@ -62,9 +64,11 @@ KiCad Studio turns VS Code into a practical KiCad workspace: view schematics and
 
 ### `kicad-mcp-pro` Integration
 
-- Auto-detects `kicad-mcp-pro` from `uvx`, a global executable, or `pip`.
+- Auto-detects `kicad-mcp-pro` from `uvx`, a global executable, `pip`, or `pipx`.
 - Offers to create `.vscode/mcp.json` in the active workspace.
-- Pushes active file, DRC summary, selection context, and active variant to MCP.
+- Registers `kicad-mcp-pro` as an MCP server definition when the host VS Code build supports the API.
+- Uses Streamable HTTP-compatible requests for the extension-side MCP client and reuses `MCP-Session-Id` values when provided by the server.
+- Pushes active file, DRC summary, selection context, cursor position, visible layer set, and active variant to MCP.
 - Surfaces `kicad://project/fix_queue` as the `AI Fix Queue` view.
 - Lets users edit project design intent from a dedicated webview form.
 
@@ -78,6 +82,7 @@ See [docs/INTEGRATION.md](docs/INTEGRATION.md) for the detailed MCP workflow.
 4. Run `KiCad: Detect kicad-cli` once to validate your local KiCad installation.
 5. Open a schematic or PCB file to use the viewer, project tree, BOM, netlist, and export commands.
 6. Optionally run `KiCad: Setup MCP Integration` if `kicad-mcp-pro` is installed locally.
+7. If you want KiCad Studio to appear as a chat-model vendor, run `KiCad: Manage Chat Provider` and store a Claude API key.
 
 ## Installation
 
@@ -104,6 +109,7 @@ If detection fails, set `kicadstudio.kicadCliPath` manually. More detail lives i
 - `KiCad: Setup MCP Integration`
 - `KiCad: Open Design Intent`
 - `KiCad: Open AI Chat`
+- `KiCad: Manage Chat Provider`
 - `KiCad: New Variant`
 - `KiCad: Compare Variant BOMs`
 
@@ -129,9 +135,13 @@ Important settings include:
 - `kicadstudio.ai.provider`
 - `kicadstudio.ai.model`
 - `kicadstudio.ai.language`
+- `kicadstudio.ai.allowTools`
+- `kicadstudio.cli.defineVars`
 - `kicadstudio.mcp.autoDetect`
 - `kicadstudio.mcp.endpoint`
+- `kicadstudio.mcp.allowLegacySse`
 - `kicadstudio.mcp.pushContext`
+- `kicadstudio.viewer.largeFileThresholdBytes`
 - `kicadstudio.viewer.syncThemeWithVscode`
 - `kicadstudio.viewer.enableLayerPanel`
 - `kicadstudio.viewer.enableSnapshotExport`

@@ -17,9 +17,28 @@ describe('diff viewer assets', () => {
   it('allows KiCanvas blob/worker resources in the diff webview CSP', () => {
     const html = fs.readFileSync(path.join(root, 'media', 'viewer', 'diff.html'), 'utf8');
 
+    expect(html).toContain("script-src 'nonce-{{scriptNonce}}' {{cspSource}} blob:;");
+    expect(html).toContain('style-src {{cspSource}};');
     expect(html).toContain('worker-src {{cspSource}} blob:;');
     expect(html).toContain('connect-src {{cspSource}} blob: data:;');
     expect(html).toContain('img-src {{cspSource}} data: blob:;');
+    expect(html).toContain('<script nonce="{{scriptNonce}}" src="{{kicanvasUri}}"></script>');
+    expect(html).toContain('<script nonce="{{scriptNonce}}" src="{{scriptUri}}"></script>');
+    expect(html).not.toContain('unsafe-inline');
+    expect(html).not.toContain('unsafe-eval');
+  });
+
+  it('keeps viewer webview templates free of unsafe CSP directives', () => {
+    for (const fileName of ['bom.html', 'netlist.html', 'pcb.html', 'schematic.html']) {
+      const html = fs.readFileSync(path.join(root, 'media', 'viewer', fileName), 'utf8');
+
+      expect(html).not.toContain('unsafe-inline');
+      expect(html).not.toContain('unsafe-eval');
+      expect(html).toContain("script-src 'nonce-{{scriptNonce}}'");
+      for (const scriptTag of html.match(/<script[^>]*>/g) ?? []) {
+        expect(scriptTag).toContain('nonce="{{scriptNonce}}"');
+      }
+    }
   });
 
   it('renders BOM and netlist rows without innerHTML string templates', () => {

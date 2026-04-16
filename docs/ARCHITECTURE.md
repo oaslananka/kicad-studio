@@ -39,6 +39,8 @@ The extension is activated from KiCad project, schematic, PCB, jobset, or DRC ru
 - Copilot and Gemini providers use the VS Code Language Model API when available.
 - `KiCadChatPanel` is the multi-turn chat UI and can render MCP tool suggestions embedded in assistant replies.
 - Prompt construction in `src/ai/prompts.ts` is KiCad 10-aware and injects active variant / MCP context when available.
+- `src/lm/languageModelTools.ts` registers agent-callable KiCad tools for supported VS Code hosts.
+- `src/lm/languageModelChatProvider.ts` exposes a Claude-backed `kicadstudio` chat-model vendor when the host supports chat-provider registration.
 
 ## MCP Layer
 
@@ -46,6 +48,7 @@ The extension is activated from KiCad project, schematic, PCB, jobset, or DRC ru
 - `McpClient` handles HTTP JSON-RPC calls, tool previews, tool execution, and fix queue reads.
 - `ContextBridge` debounces and pushes studio context to MCP.
 - `DesignIntentPanel` is a user-friendly wrapper around design-intent MCP tools.
+- `src/lm/mcpServerDefinitionProvider.ts` advertises the detected local MCP server directly to the editor when supported.
 
 ## Data Flow
 

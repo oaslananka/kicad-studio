@@ -55,13 +55,27 @@ export class McpDetector {
       };
     }
 
+    const pipxResult = this.tryPipx();
+    if (pipxResult.found) {
+      return {
+        found: true,
+        command: 'kicad-mcp-pro',
+        version: pipxResult.version,
+        source: 'pip'
+      };
+    }
+
     return {
       found: false,
       source: 'none'
     };
   }
 
-  async generateMcpJson(projectDir: string, status: McpInstallStatus): Promise<void> {
+  async generateMcpJson(
+    projectDir: string,
+    status: McpInstallStatus,
+    profile = 'full'
+  ): Promise<void> {
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? projectDir;
     const mcpJsonPath = path.join(root, '.vscode', 'mcp.json');
 
@@ -86,7 +100,7 @@ export class McpDetector {
           args,
           env: {
             KICAD_MCP_PROJECT_DIR: projectDir,
-            KICAD_MCP_PROFILE: 'full'
+            KICAD_MCP_PROFILE: profile
           }
         }
       }
@@ -144,6 +158,19 @@ export class McpDetector {
       };
     }
     return { found: false };
+  }
+
+  private tryPipx(): { found: boolean; version?: string } {
+    const result = run('pipx', ['list']);
+    if (!result.ok || !/\bkicad-mcp-pro\b/i.test(result.output)) {
+      return { found: false };
+    }
+
+    const version = result.output.match(/kicad-mcp-pro[^0-9]*(\d+\.\d+(?:\.\d+)?)/i)?.[1];
+    return {
+      found: true,
+      ...(version ? { version } : {})
+    };
   }
 }
 

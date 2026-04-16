@@ -1,6 +1,34 @@
 # Changelog
 
-## [Unreleased]
+## [2.4.0] - 2026-04-16
+
+### Added
+
+- Language Model Tools contributions for DRC/ERC, Gerber export, file opening, component/library search, active-context reads, and variant listing/switching.
+- `kicadstudio.manageChatProvider` plus a Claude-backed Language Model Chat Provider contribution for VS Code hosts that support chat-provider registration.
+- MCP server definition provider contribution so compatible VS Code builds can discover `kicad-mcp-pro` without requiring `.vscode/mcp.json`.
+- Baseline-driven bundle-size regression checks with `scripts/bundle-size-baseline.json`.
+- CI dependency auditing via `npm audit --audit-level=moderate`.
+
+### Changed
+
+- Bumped the extension version to `2.4.0`.
+- MCP bootstrap now supports explicit profile selection and `pipx` detection fallback.
+- MCP HTTP transport now follows Streamable HTTP expectations, including `Accept: application/json, text/event-stream` and `MCP-Session-Id` reuse.
+- Viewer and webview message handling now performs stricter runtime validation before acting on inbound payloads.
+- Activation logging now emits a warning when startup exceeds 500 ms.
+- README and docs were refreshed for LM tools, chat-provider support, Streamable HTTP MCP behavior, and KiCad 10 guidance.
+
+### Fixed
+
+- Hardened the Playwright VS Code smoke-test harness cleanup path for Windows temp directories so release validation no longer fails on transient `EPERM` cleanup locks.
+- `kicad-cli` runner now supports cancellation-aware progress flows, typed exit errors, and KiCad text-variable expansion through `--define-var`.
+- Component search, variant helpers, and LM/MCP registrations now have unit and integration coverage for the new branches introduced in the 2.4.0 work.
+- Webview CSPs now avoid inline/eval allowances while keeping all scripts nonce-gated.
+
+### Removed
+
+- The stale placeholder release-notes section so the changelog maps directly to shipped versions.
 
 ## [2.3.3] - 2026-04-16
 

@@ -32,7 +32,7 @@ describe('McpDetector.generateMcpJson', () => {
       command: 'uvx',
       version: '0.5.0',
       source: 'uvx'
-    });
+    }, 'analysis');
 
     const configPath = path.join(tempDir, '.vscode', 'mcp.json');
     const saved = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
@@ -48,6 +48,7 @@ describe('McpDetector.generateMcpJson', () => {
     expect(saved.servers.kicad.command).toBe('uvx');
     expect(saved.servers.kicad.args).toEqual(['kicad-mcp-pro']);
     expect(saved.servers.kicad.env['KICAD_MCP_PROJECT_DIR']).toBe(tempDir);
+    expect(saved.servers.kicad.env['KICAD_MCP_PROFILE']).toBe('analysis');
     expect(window.showInformationMessage).toHaveBeenCalled();
   });
 
@@ -198,6 +199,32 @@ describe('McpDetector.generateMcpJson', () => {
     expect(result).toEqual({
       found: false,
       source: 'none'
+    });
+  });
+
+  it('falls back to pipx metadata when uvx, global binary, and pip are unavailable', async () => {
+    spawnSyncMock.mockImplementation((command: string) => {
+      if (command === 'pipx') {
+        return {
+          status: 0,
+          stdout: 'package kicad-mcp-pro 0.8.4, installed using Python 3.12.0',
+          stderr: ''
+        } as childProcess.SpawnSyncReturns<string>;
+      }
+      return {
+        status: 1,
+        stdout: '',
+        stderr: 'missing'
+      } as childProcess.SpawnSyncReturns<string>;
+    });
+
+    const result = await new McpDetector().detectKicadMcpPro();
+
+    expect(result).toEqual({
+      found: true,
+      command: 'kicad-mcp-pro',
+      version: '0.8.4',
+      source: 'pip'
     });
   });
 });

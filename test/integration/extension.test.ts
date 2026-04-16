@@ -56,6 +56,8 @@ suite('Extension Integration', () => {
       'kicadstudio.setOctopartApiKey',
       'kicadstudio.setAiApiKey',
       'kicadstudio.clearSecrets',
+      'kicadstudio.showStoredSecrets',
+      'kicadstudio.manageChatProvider',
       'kicadstudio.export3DPdf',
       'kicadstudio.setupMcpIntegration',
       'kicadstudio.openDesignIntent',

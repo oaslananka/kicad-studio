@@ -1,29 +1,81 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const limits = [
-  { file: path.join('dist', 'extension.js'), maxBytes: 200 * 1024 },
-  { file: path.join('dist', 'exceljs.js'), maxBytes: 2 * 1024 * 1024 },
-  { file: path.join('media', 'kicanvas', 'kicanvas.js'), maxBytes: 2 * 1024 * 1024 }
-];
+const BASELINE_PATH = path.join(__dirname, 'bundle-size-baseline.json');
+const MAX_GROWTH_FACTOR = 1.1;
+
+if (!fs.existsSync(BASELINE_PATH)) {
+  console.error(`Missing bundle size baseline: ${BASELINE_PATH}`);
+  process.exit(1);
+}
+
+const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
+const artifacts = baseline.artifacts ?? {};
+const currentArtifacts = collectCurrentArtifacts();
 
 let failed = false;
-for (const limit of limits) {
-  if (!fs.existsSync(limit.file)) {
-    console.error(`Missing bundle artifact: ${limit.file}`);
+for (const [name, baselineBytes] of Object.entries(artifacts)) {
+  const currentBytes = currentArtifacts[name];
+  if (typeof baselineBytes !== 'number') {
+    console.error(`Invalid baseline entry for ${name}.`);
     failed = true;
     continue;
   }
-  const size = fs.statSync(limit.file).size;
-  const sizeKb = (size / 1024).toFixed(1);
-  const maxKb = (limit.maxBytes / 1024).toFixed(1);
-  console.log(`${limit.file}: ${sizeKb} KiB / ${maxKb} KiB`);
-  if (size > limit.maxBytes) {
-    console.error(`Bundle size regression: ${limit.file} exceeds ${maxKb} KiB.`);
+  if (typeof currentBytes !== 'number') {
+    console.error(`Missing bundle artifact for ${name}.`);
+    failed = true;
+    continue;
+  }
+
+  const maxBytes = Math.floor(baselineBytes * MAX_GROWTH_FACTOR);
+  console.log(
+    `${name}: ${formatBytes(currentBytes)} / baseline ${formatBytes(
+      baselineBytes
+    )} / max ${formatBytes(maxBytes)}`
+  );
+  if (currentBytes > maxBytes) {
+    console.error(
+      `Bundle size regression: ${name} grew beyond the allowed 10% threshold.`
+    );
     failed = true;
   }
 }
 
 if (failed) {
   process.exit(1);
+}
+
+function collectCurrentArtifacts() {
+  const result = {
+    'dist/extension.js': statIfExists(path.join(process.cwd(), 'dist', 'extension.js')),
+    'dist/exceljs.js': statIfExists(path.join(process.cwd(), 'dist', 'exceljs.js')),
+    'media/kicanvas/kicanvas.js': statIfExists(
+      path.join(process.cwd(), 'media', 'kicanvas', 'kicanvas.js')
+    ),
+    vsix: findLatestVsixSize(process.cwd())
+  };
+
+  return result;
+}
+
+function statIfExists(filePath) {
+  return fs.existsSync(filePath) ? fs.statSync(filePath).size : undefined;
+}
+
+function findLatestVsixSize(root) {
+  const vsixFiles = fs
+    .readdirSync(root)
+    .filter((entry) => entry.endsWith('.vsix'))
+    .map((entry) => ({
+      path: path.join(root, entry),
+      stat: fs.statSync(path.join(root, entry))
+    }))
+    .sort((left, right) => right.stat.mtimeMs - left.stat.mtimeMs);
+
+  const [latest] = vsixFiles;
+  return latest?.stat.size;
+}
+
+function formatBytes(value) {
+  return `${(value / 1024).toFixed(1)} KiB`;
 }

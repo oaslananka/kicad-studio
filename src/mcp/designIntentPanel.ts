@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { asRecord, hasType } from '../utils/webviewMessages';
 import { McpClient } from './mcpClient';
 
 export class DesignIntentPanel {
@@ -30,7 +31,11 @@ export class DesignIntentPanel {
       }
     });
     panel.webview.html = this.getFormHtml();
-    panel.webview.onDidReceiveMessage(async (message) => {
+    panel.webview.onDidReceiveMessage(async (message: unknown) => {
+      if (!hasType(message, ['load', 'save'])) {
+        return;
+      }
+
       if (message.type === 'load') {
         const intent = await mcpClient.callTool('project_get_design_intent', {});
         await panel.webview.postMessage({
@@ -41,7 +46,8 @@ export class DesignIntentPanel {
       }
 
       if (message.type === 'save') {
-        await mcpClient.callTool('project_set_design_intent', message.data ?? {});
+        const record = asRecord(message);
+        await mcpClient.callTool('project_set_design_intent', asRecord(record?.['data']) ?? {});
         void vscode.window.showInformationMessage(
           'Design intent saved. AI can now use your project intent as context.'
         );
@@ -118,6 +124,12 @@ export class DesignIntentPanel {
     </label>
     <label>Analog / digital partitioning
       <textarea name="partitioning" placeholder="ADC and RF sections isolated from motor power"></textarea>
+    </label>
+    <label>Sensor cluster references
+      <textarea name="sensorClusterRefs" placeholder="U4, U5, J3"></textarea>
+    </label>
+    <label>RF keepouts
+      <textarea name="rfKeepouts" placeholder="Antenna edge, matching network clearance"></textarea>
     </label>
     <label>Fabrication profile
       <select name="fabricationProfile">

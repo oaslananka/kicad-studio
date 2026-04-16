@@ -56,14 +56,14 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'none';
     script-src  'nonce-${nonce}' ${options.cspSource} blob:;
-    style-src   'unsafe-inline';
+    style-src   'nonce-${nonce}' ${options.cspSource};
     worker-src  blob: ${options.cspSource};
     connect-src 'self' blob: data: ${options.cspSource};
     img-src     ${options.cspSource} data: blob:;
     font-src    ${options.cspSource} data:;
   ">
   <title>${escapeHtml(options.title)}: ${escapeHtml(options.fileName)}</title>
-  <style>
+  <style nonce="${nonce}">
     :root {
       color-scheme: ${palette.colorScheme};
       --bg:      ${palette.bg};
@@ -308,7 +308,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
 
     <!-- Loading overlay (shown while KiCanvas initializes) -->
     <div id="loading-overlay" class="overlay" role="status" aria-label="Loading file...">
-      <div id="loading-card" class="card" style="text-align:center">
+      <div id="loading-card" class="card loading-card">
         <div class="spinner" aria-hidden="true"></div>
         <strong>Loading KiCanvas renderer…</strong>
         <div id="loading-detail">Preparing ${escapeHtml(options.fileType === 'board' ? 'PCB' : 'schematic')} viewer…</div>
@@ -973,14 +973,20 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
 // Error page
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function createViewerErrorHtml(fileName: string, error: unknown): string {
+export function createViewerErrorHtml(
+  fileName: string,
+  error: unknown,
+  cspSource = ''
+): string {
   const message = error instanceof Error ? error.message : String(error);
+  const nonce = createNonce();
   return /* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}' ${escapeAttr(cspSource)};">
+  <style nonce="${nonce}">
     body  { margin: 0; padding: 24px; background: #0f172a; color: #e2e8f0; font: 13px/1.6 "Segoe UI", sans-serif; }
     .card { max-width: 860px; margin: 0 auto; padding: 22px; border-radius: 16px; background: #111827; border: 1px solid rgba(148,163,184,.22); }
     h1    { margin-top: 0; font-size: 17px; }

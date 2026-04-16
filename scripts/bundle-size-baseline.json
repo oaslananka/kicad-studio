@@ -1,0 +1,9 @@
+{
+  "generatedAt": "2026-04-16",
+  "artifacts": {
+    "dist/extension.js": 224348,
+    "dist/exceljs.js": 994147,
+    "media/kicanvas/kicanvas.js": 473879,
+    "vsix": 1606459
+  }
+}

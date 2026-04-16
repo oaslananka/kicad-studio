@@ -13,6 +13,7 @@ export interface CliRunOptions {
   progressTitle: string;
   parseOutput?: (stdout: string, stderr: string) => unknown;
   onProgress?: (message: string) => void;
+  signal?: AbortSignal | undefined;
 }
 
 export interface CliResult<T = unknown> {
@@ -283,9 +284,17 @@ export interface StudioContext {
         x2: number;
         y2: number;
       }
-    | undefined;
+      | undefined;
   activeVariant?: string | undefined;
   mcpConnected?: boolean | undefined;
+  cursorPosition?:
+    | {
+        line: number;
+        character: number;
+      }
+    | undefined;
+  activeSheetPath?: string | undefined;
+  visibleLayers?: string[] | undefined;
 }
 
 export interface FixItem {

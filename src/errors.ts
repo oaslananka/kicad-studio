@@ -14,6 +14,24 @@ export class KiCadCliTimeoutError extends Error {
   }
 }
 
+export class CliExitError extends Error {
+  readonly code: number;
+  readonly stdout: string;
+  readonly stderr: string;
+
+  constructor(args: { command: string; code: number; stdout: string; stderr: string }) {
+    super(
+      `kicad-cli command '${args.command}' failed with exit code ${args.code}. ${
+        (args.stderr || args.stdout).trim() || 'No diagnostic output was produced.'
+      }`
+    );
+    this.name = 'CliExitError';
+    this.code = args.code;
+    this.stdout = args.stdout;
+    this.stderr = args.stderr;
+  }
+}
+
 export class AIProviderNotConfiguredError extends Error {
   constructor() {
     super('AI provider not configured. Set a provider and API key in settings.');

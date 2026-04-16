@@ -3,6 +3,8 @@ import { McpClient } from './mcpClient';
 
 export class ContextBridge {
   private lastContext: StudioContext | null = null;
+  private pendingContext: StudioContext | null = null;
+  private flushTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly client: McpClient) {}
 
@@ -11,7 +13,21 @@ export class ContextBridge {
       return;
     }
 
-    this.lastContext = context;
-    await this.client.pushContext(context);
+    this.pendingContext = context;
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+    }
+
+    this.flushTimer = setTimeout(() => {
+      const nextContext = this.pendingContext;
+      this.pendingContext = null;
+      this.flushTimer = undefined;
+      if (!nextContext || JSON.stringify(nextContext) === JSON.stringify(this.lastContext)) {
+        return;
+      }
+
+      this.lastContext = nextContext;
+      void this.client.pushContext(nextContext);
+    }, 500);
   }
 }

@@ -157,6 +157,12 @@ export const commands = {
   executeCommand: jest.fn()
 };
 
+export const lm = {
+  registerTool: jest.fn(() => createDisposable()),
+  registerMcpServerDefinitionProvider: jest.fn(() => createDisposable()),
+  registerLanguageModelChatProvider: jest.fn(() => createDisposable())
+};
+
 export const tasks = {
   registerTaskProvider: jest.fn(() => createDisposable())
 };
@@ -278,6 +284,10 @@ export class ThemeIcon {
   constructor(public readonly id: string) {}
 }
 
+export class MarkdownString {
+  constructor(public readonly value: string) {}
+}
+
 export class TreeItem {
   description?: string;
   tooltip?: string;
@@ -352,4 +362,16 @@ export class Task {
     public readonly source: string,
     public readonly execution: ProcessExecution
   ) {}
+}
+
+export class LanguageModelTextPart {
+  constructor(public readonly value: string) {}
+}
+
+export class LanguageModelToolResult {
+  constructor(public readonly content: unknown[]) {}
+}
+
+export class McpStdioServerDefinition {
+  constructor(public readonly value: unknown) {}
 }

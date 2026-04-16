@@ -5,6 +5,7 @@ import { McpClient } from '../mcp/mcpClient';
 import { extractMcpToolCalls } from '../mcp/toolCallParser';
 import type { McpToolCall } from '../types';
 import { Logger } from '../utils/logger';
+import { asNumber, asRecord, asString, hasType } from '../utils/webviewMessages';
 import { AIProviderRegistry } from './aiProvider';
 import { getActiveAiContext } from './context';
 import { buildSystemPrompt, DEFAULT_AI_LANGUAGE, normalizeAiLanguage } from './prompts';
@@ -17,23 +18,16 @@ interface ChatMessage {
   applied?: boolean;
 }
 
-interface ChatPanelMessage {
-  type:
-    | 'send'
-    | 'cancel'
-    | 'clear'
-    | 'ready'
-    | 'selectionChanged'
-    | 'applyToolCalls'
-    | 'ignoreToolCalls';
-  prompt?: string;
-  context?: string;
-  provider?: string;
-  model?: string;
-  timestamp?: number;
-}
-
 const CHAT_HISTORY_KEY = 'kicadstudio.aiChat.history';
+const CHAT_PANEL_MESSAGE_TYPES = [
+  'send',
+  'cancel',
+  'clear',
+  'ready',
+  'selectionChanged',
+  'applyToolCalls',
+  'ignoreToolCalls'
+];
 
 /**
  * Multi-turn AI chat panel for KiCad Studio.
@@ -95,7 +89,7 @@ export class KiCadChatPanel implements vscode.Disposable {
     this.panel.webview.html = this.buildHtml();
     this.disposables.push(
       this.panel.onDidDispose(() => this.handleDisposed()),
-      this.panel.webview.onDidReceiveMessage((message: ChatPanelMessage) => void this.handleMessage(message)),
+      this.panel.webview.onDidReceiveMessage((message: unknown) => void this.handleMessage(message)),
       vscode.window.onDidChangeActiveTextEditor(() => void this.postContextInfo()),
       vscode.workspace.onDidSaveTextDocument(() => void this.postContextInfo())
     );
@@ -116,18 +110,25 @@ export class KiCadChatPanel implements vscode.Disposable {
     await this.runPrompt(prompt, extraContext);
   }
 
-  private async handleMessage(message: ChatPanelMessage): Promise<void> {
+  private async handleMessage(message: unknown): Promise<void> {
+    if (!hasType(message, CHAT_PANEL_MESSAGE_TYPES)) {
+      return;
+    }
+
+    const record = asRecord(message) ?? {};
     if (message.type === 'ready') {
       await this.postHydrate();
       return;
     }
 
     if (message.type === 'selectionChanged') {
-      if (message.provider) {
-        this.selectedProvider = message.provider;
+      const provider = asString(record['provider']);
+      const model = asString(record['model']);
+      if (provider) {
+        this.selectedProvider = provider;
       }
-      if (typeof message.model === 'string') {
-        this.selectedModel = message.model;
+      if (typeof model === 'string') {
+        this.selectedModel = model;
       }
       return;
     }
@@ -144,23 +145,33 @@ export class KiCadChatPanel implements vscode.Disposable {
       return;
     }
 
-    if (message.type === 'applyToolCalls' && typeof message.timestamp === 'number') {
-      await this.applyToolCalls(message.timestamp);
-      return;
-    }
-
-    if (message.type === 'ignoreToolCalls' && typeof message.timestamp === 'number') {
-      const target = this.history.find((entry) => entry.timestamp === message.timestamp);
-      if (target) {
-        target.applied = true;
-        await this.persistHistory();
-        await this.panel.webview.postMessage({ type: 'assistantReplace', message: target });
+    if (message.type === 'applyToolCalls') {
+      const timestamp = asNumber(record['timestamp']);
+      if (timestamp !== undefined) {
+        await this.applyToolCalls(timestamp);
       }
       return;
     }
 
-    if (message.type === 'send' && message.prompt?.trim()) {
-      await this.runPrompt(message.prompt.trim(), message.context ?? '');
+    if (message.type === 'ignoreToolCalls') {
+      const timestamp = asNumber(record['timestamp']);
+      if (timestamp !== undefined) {
+        const target = this.history.find((entry) => entry.timestamp === timestamp);
+        if (target) {
+          target.applied = true;
+          await this.persistHistory();
+          await this.panel.webview.postMessage({ type: 'assistantReplace', message: target });
+        }
+      }
+      return;
+    }
+
+    if (message.type === 'send') {
+      const prompt = asString(record['prompt'])?.trim();
+      const context = asString(record['context']) ?? '';
+      if (prompt) {
+        await this.runPrompt(prompt, context);
+      }
     }
   }
 

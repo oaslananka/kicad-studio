@@ -15,9 +15,15 @@ export function getCliCandidates(platform = process.platform, configuredPath = '
   if (platform === 'win32') {
     const programFiles = process.env['PROGRAMFILES'] ?? 'C:\\Program Files';
     const programFilesX86 = process.env['PROGRAMFILES(X86)'] ?? 'C:\\Program Files (x86)';
+    const localAppData = process.env['LOCALAPPDATA'] ?? '';
     for (const version of ['10.0', '10', '9.0', '9', '8.0', '8', '7.0', '7', '6.0', '6']) {
       candidates.push(path.join(programFiles, 'KiCad', version, 'bin', 'kicad-cli.exe'));
       candidates.push(path.join(programFilesX86, 'KiCad', version, 'bin', 'kicad-cli.exe'));
+      if (localAppData) {
+        candidates.push(
+          path.join(localAppData, 'Programs', 'KiCad', version, 'bin', 'kicad-cli.exe')
+        );
+      }
     }
   } else if (platform === 'darwin') {
     candidates.push(
@@ -30,7 +36,8 @@ export function getCliCandidates(platform = process.platform, configuredPath = '
       '/usr/bin/kicad-cli',
       '/usr/local/bin/kicad-cli',
       '/snap/bin/kicad-cli',
-      path.join(os.homedir(), '.local', 'bin', 'kicad-cli')
+      path.join(os.homedir(), '.local', 'bin', 'kicad-cli'),
+      path.join(os.homedir(), '.var', 'app', 'org.kicad.KiCad', 'data', 'bin', 'kicad-cli')
     );
   }
 
@@ -97,6 +104,13 @@ export class KiCadCliDetector {
   clearCache(): void {
     this.detected = undefined;
     this.capabilityCache.clear();
+  }
+
+  getVersion(): number | undefined {
+    if (!this.detected) {
+      return undefined;
+    }
+    return Number.parseInt(this.detected.version.split('.')[0] ?? '', 10) || undefined;
   }
 
   async hasCapability(command: keyof typeof CLI_CAPABILITY_COMMANDS): Promise<boolean> {

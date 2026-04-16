@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { bufferToBase64 } from '../utils/fileUtils';
 import { GitDiffDetector } from '../git/gitDiffDetector';
+import { asRecord, asString, hasType } from '../utils/webviewMessages';
 
 
 /**
@@ -58,7 +59,10 @@ export class DiffEditorProvider {
     this.panels.set(key, panel);
     panel.onDidDispose(() => this.panels.delete(key));
 
-    panel.webview.onDidReceiveMessage((message: { type: string; payload?: unknown }) => {
+    panel.webview.onDidReceiveMessage((message: unknown) => {
+      if (!hasType(message, ['navigate', 'refresh', 'copyToClipboard'])) {
+        return;
+      }
       this.handleMessage(message, uri);
     });
 
@@ -122,9 +126,10 @@ export class DiffEditorProvider {
 
   private handleMessage(message: { type: string; payload?: unknown }, _uri: vscode.Uri): void {
     if (message.type === 'navigate') {
-      const payload = message.payload as { reference?: string } | undefined;
-      if (payload?.reference) {
-        void vscode.window.showInformationMessage(`Diff focus: ${payload.reference}`);
+      const payload = asRecord(message.payload);
+      const reference = asString(payload?.['reference']);
+      if (reference) {
+        void vscode.window.showInformationMessage(`Diff focus: ${reference}`);
       }
     }
 
@@ -138,12 +143,14 @@ export class DiffEditorProvider {
     }
 
     if (message.type === 'copyToClipboard') {
-      const text = (message.payload as { text?: string } | undefined)?.text ?? '';
+      const payload = asRecord(message.payload);
+      const text = asString(payload?.['text']) ?? '';
       void vscode.env.clipboard.writeText(text);
     }
   }
 
   private buildHtml(webview: vscode.Webview): string {
+    const nonce = createNonce();
     const templatePath = path.join(
       this.context.extensionUri.fsPath,
       'media', 'viewer', 'diff.html'
@@ -156,6 +163,7 @@ export class DiffEditorProvider {
     const template = fs.readFileSync(templatePath, 'utf8');
     return template
       .replaceAll('{{cspSource}}',    webview.cspSource)
+      .replaceAll('{{scriptNonce}}',  nonce)
       .replaceAll('{{viewerCssUri}}', webview.asWebviewUri(
         vscode.Uri.joinPath(this.context.extensionUri, 'media', 'styles', 'viewer.css')
       ).toString())
@@ -170,12 +178,13 @@ export class DiffEditorProvider {
   /** Minimal inline fallback if the external HTML template is missing. */
   private fallbackHtml(webview: vscode.Webview): string {
     const csp = webview.cspSource;
+    const nonce = createNonce();
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${csp} 'unsafe-inline'; script-src ${csp} 'unsafe-inline';">
-  <style>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}' ${csp};">
+  <style nonce="${nonce}">
     body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: 2rem; }
     #summary { margin-bottom: 1rem; font-weight: bold; }
     #diff-list { list-style: none; padding: 0; }
@@ -190,13 +199,16 @@ export class DiffEditorProvider {
   </style>
 </head>
 <body>
-  <button onclick="vscode.postMessage({type:'refresh'})">↻ Refresh</button>
+  <button id="refresh-btn">↻ Refresh</button>
   <div id="summary" id="loading">Loading diff…</div>
   <ul id="diff-list"></ul>
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const summaryEl = document.getElementById('summary');
     const listEl    = document.getElementById('diff-list');
+    document.getElementById('refresh-btn').addEventListener('click', () => {
+      vscode.postMessage({ type: 'refresh' });
+    });
     window.addEventListener('message', ({ data }) => {
       if (data.type === 'loading') {
         summaryEl.textContent = 'Loading diff…';
@@ -230,4 +242,13 @@ export class DiffEditorProvider {
     const files = await vscode.workspace.findFiles('**/*.kicad_sch', '**/node_modules/**', 1);
     return files[0]?.fsPath;
   }
+}
+
+function createNonce(): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let value = '';
+  for (let index = 0; index < 32; index += 1) {
+    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+  }
+  return value;
 }

@@ -10,4 +10,5 @@ tmp/
 fab/
 .tmp-kicanvas-check/
 .vscode-test/
+.vscode/mcp.json
 TEMP_FOLDER/

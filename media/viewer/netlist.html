@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'none';
-    script-src {{cspSource}};
-    style-src {{cspSource}} 'unsafe-inline';
+    script-src 'nonce-{{scriptNonce}}' {{cspSource}};
+    style-src {{cspSource}};
   ">
   <title>KiCad Netlist</title>
   <link rel="stylesheet" href="{{bomCssUri}}">
@@ -28,6 +28,6 @@
       </table>
     </div>
   </div>
-  <script src="{{scriptUri}}"></script>
+  <script nonce="{{scriptNonce}}" src="{{scriptUri}}"></script>
 </body>
 </html>
