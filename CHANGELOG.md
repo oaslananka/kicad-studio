@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-04-16
+
+### Added
+
+- Real VS Code desktop smoke E2E coverage using Playwright CDP automation and a dedicated test harness.
+- Integration coverage for schematic and PCB custom editor opening flows plus `.kicad_dru` language activation.
+- Unit coverage for KiCad 10 variants, graphical DRC rules, MCP detection branches, and status bar states.
+
+### Changed
+
+- Expanded the extension command registration integration test to cover the current KiCad 10 and MCP command surface.
+- Updated contributing guidance to treat `npm run test:e2e` as part of desktop-facing validation.
+
 ## [2.3.0] - 2026-04-16
 
 ### Added
