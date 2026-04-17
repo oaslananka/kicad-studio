@@ -9,9 +9,11 @@ export interface KiCanvasViewerHtmlOptions {
   status: string;
   cspSource: string;
   kicanvasUri: string;
+  viewerCssUri?: string;
   base64: string;
   disabledReason: string;
   theme?: string;
+  fallbackBackground?: string;
   metadata?: ViewerMetadata;
   restoreState?: ViewerState | undefined;
 }
@@ -35,20 +37,20 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
   const nonce = createNonce();
   const themeName = options.theme ?? 'kicad';
   const palette = resolveViewerPalette(themeName);
-  const hasSidebar = Boolean(
-    options.metadata?.layers?.length || options.metadata?.tuningProfiles?.length
-  );
+  const hasLayerControls = Boolean(options.metadata?.layers?.length);
+  const sidebarWidth = hasLayerControls || options.metadata?.tuningProfiles?.length ? '320px' : '240px';
   const payload: ViewerPayload = {
     fileName:       options.fileName,
     fileType:       options.fileType,
     base64:         options.base64,
     disabledReason: options.disabledReason,
     theme:          themeName,
+    fallbackBackground: options.fallbackBackground ?? '',
     ...(options.metadata ? { metadata: options.metadata } : {}),
     ...(options.restoreState ? { restoreState: options.restoreState } : {})
   };
 
-  return /* html */`<!DOCTYPE html>
+  return compactHtmlDocument(/* html */`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -63,6 +65,9 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     font-src    ${options.cspSource} data:;
   ">
   <title>${escapeHtml(options.title)}: ${escapeHtml(options.fileName)}</title>
+  ${options.viewerCssUri
+    ? `<link rel="stylesheet" href="${escapeAttr(options.viewerCssUri)}">`
+    : ''}
   <style nonce="${nonce}">
     :root {
       color-scheme: ${palette.colorScheme};
@@ -75,218 +80,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       --danger:  ${palette.danger};
       --green:   ${palette.green};
       --viewer-card-bg: ${palette.card};
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-    body {
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
-      height: 100vh;
-      background: var(--bg);
-      color: var(--text);
-      font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
-    }
-
-    /* ── Header ── */
-    header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 14px;
-      background: #071225;
-      border-bottom: 1px solid rgba(56,189,248,.3);
-      box-shadow: 0 6px 18px rgba(2,6,23,.35);
-      z-index: 10;
-      min-width: 0;
-    }
-    header h1 {
-      margin: 0;
-      font-size: 13px;
-      font-weight: 650;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 1 1 0;
-      min-width: 0;
-    }
-    .actions { display: flex; gap: 8px; flex: 0 0 auto; }
-    .btn {
-      border: 1px solid rgba(125,211,252,.9);
-      background: linear-gradient(180deg,#0891b2,#0e7490);
-      color: #fff;
-      border-radius: 8px;
-      padding: 5px 11px;
-      cursor: pointer;
-      font-weight: 700;
-      font-size: 12px;
-    }
-    .btn:hover { background: linear-gradient(180deg,#06b6d4,#0e7490); }
-    .btn:focus-visible { outline: 2px solid #bae6fd; outline-offset: 2px; }
-    #viewer-status {
-      flex: 0 1 auto;
-      color: var(--muted);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 12px;
-    }
-
-    /* ── Main ── */
-    main {
-      position: relative;
-      overflow: hidden;
-      background: var(--bg);
-      min-width: 0;
-      min-height: 0;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) ${hasSidebar ? '320px' : '0'};
-    }
-
-    /* ── KiCanvas mount (fills main) ── */
-    #viewer-mount {
-      position: absolute;
-      inset: 0 ${hasSidebar ? '320px' : '0'} 0 0;
-      display: flex;
-    }
-    kicanvas-embed {
-      display: block !important;
-      flex: 1 !important;
-      width: 100% !important;
-      height: 100% !important;
-      min-width: 0 !important;
-      min-height: 0 !important;
-      max-width: none !important;
-      max-height: none !important;
-      aspect-ratio: auto !important;
-      contain: strict !important;
-    }
-
-    aside {
-      position: relative;
-      z-index: 4;
-      border-left: 1px solid var(--border);
-      background: linear-gradient(180deg, rgba(2, 6, 23, 0.86), rgba(15, 23, 42, 0.94));
-      overflow-y: auto;
-      padding: 14px;
-      display: ${hasSidebar ? 'block' : 'none'};
-    }
-    .side-section {
-      border: 1px solid var(--border);
-      background: var(--viewer-card-bg);
-      border-radius: 14px;
-      padding: 12px;
-      margin-bottom: 12px;
-    }
-    .side-section h2 {
-      margin: 0 0 10px;
-      font-size: 12px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .meta-list {
-      display: grid;
-      gap: 8px;
-    }
-    .meta-row {
-      padding: 8px 10px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: rgba(15, 23, 42, 0.44);
-    }
-    .meta-row strong {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 12px;
-    }
-    .layer-list {
-      display: grid;
-      gap: 6px;
-    }
-    .layer-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--text);
-    }
-    .side-actions {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-
-    /* ── Overlays ── */
-    .overlay {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      padding: 28px;
-      z-index: 5;
-    }
-    .card {
-      width: min(640px, calc(100vw - 48px));
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      background: var(--panel);
-      box-shadow: 0 24px 70px rgba(0,0,0,.4);
-      padding: 22px;
-    }
-    .card h2 { margin: 0 0 10px; font-size: 17px; }
-    .card p  { margin: 0 0 10px; color: var(--muted); }
-    .card .actions { margin-top: 14px; }
-
-    /* Loading spinner */
-    #loading-overlay { background: rgba(2,6,23,.82); }
-    #loading-card { width: min(380px, calc(100vw - 48px)); text-align: center; }
-    .spinner {
-      width: 36px; height: 36px;
-      margin: 0 auto 14px;
-      border: 3px solid rgba(148,163,184,.3);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin .75s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    #loading-detail { color: var(--muted); font-size: 12px; margin-top: 6px; }
-
-    /* Error */
-    #error-overlay { background: rgba(2,6,23,.88); }
-    .error-title { color: var(--danger); font-weight: 700; margin: 0 0 8px; }
-    pre.error-detail {
-      margin: 12px 0 0;
-      max-height: 200px;
-      overflow: auto;
-      padding: 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #020617;
-      color: #dbeafe;
-      font: 12px/1.5 Consolas, "Cascadia Code", monospace;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    /* Empty */
-    #empty-overlay { background: rgba(2,6,23,.72); }
-
-    [hidden] { display: none !important; }
-
-    /* Source preview (for diagnostics) */
-    #safe-preview {
-      margin: 14px 0 0;
-      max-height: 180px;
-      overflow: auto;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
-      background: #020617;
-      color: #94a3b8;
-      font: 11px/1.5 Consolas, "Cascadia Code", monospace;
-      white-space: pre-wrap;
-      word-break: break-word;
+      --sidebar-width: ${sidebarWidth};
     }
   </style>
 </head>
@@ -348,9 +142,13 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
         <h2>Viewer Tools</h2>
         <div class="side-actions">
           <button class="btn" id="fit-btn" type="button">Fit</button>
-          <button class="btn" id="all-layers-btn" type="button">All</button>
+          <button class="btn" id="zoom-in-btn" type="button">+</button>
+          <button class="btn" id="zoom-out-btn" type="button">-</button>
+          ${hasLayerControls
+            ? `<button class="btn" id="all-layers-btn" type="button">All</button>
           <button class="btn" id="none-layers-btn" type="button">None</button>
-          <button class="btn" id="copper-layers-btn" type="button">Copper Only</button>
+          <button class="btn" id="copper-layers-btn" type="button">Copper Only</button>`
+            : ''}
         </div>
         <div id="selection-summary" class="meta-row">No lasso area selected.</div>
       </div>
@@ -406,6 +204,14 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       document.getElementById('viewer-payload').textContent || '{}'
     );
     let keydownHandler = null;
+    let fallbackSvgDataUrl = '';
+    let fallbackSvgElement = null;
+    let fallbackSvgWrapper = null;
+    let fallbackSvgStage = null;
+    let fallbackSvgSize = null;
+    let fallbackSvgFitScale = 1;
+    let fallbackSvgScale = 1;
+    let fallbackResizeHandler = null;
     let localState = payload.restoreState || {
       zoom: 1,
       grid: false,
@@ -419,15 +225,12 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     document.getElementById('error-open-btn').addEventListener('click', openInKiCad);
     document.getElementById('export-png-btn').addEventListener('click', exportPng);
     document.getElementById('export-svg-btn').addEventListener('click', exportSvg);
-    document.getElementById('fit-btn').addEventListener('click', () => {
-      const viewer = viewerMount.querySelector('kicanvas-embed');
-      viewer?.fitToScreen?.();
-      localState = { ...localState, zoom: 1 };
-      postViewerState();
-    });
-    document.getElementById('all-layers-btn').addEventListener('click', () => setAllLayers(true));
-    document.getElementById('none-layers-btn').addEventListener('click', () => setAllLayers(false));
-    document.getElementById('copper-layers-btn').addEventListener('click', () => setCopperOnly());
+    document.getElementById('fit-btn').addEventListener('click', fitCurrentViewer);
+    document.getElementById('zoom-in-btn').addEventListener('click', () => zoomCurrentViewer(1));
+    document.getElementById('zoom-out-btn').addEventListener('click', () => zoomCurrentViewer(-1));
+    document.getElementById('all-layers-btn')?.addEventListener('click', () => setAllLayers(true));
+    document.getElementById('none-layers-btn')?.addEventListener('click', () => setAllLayers(false));
+    document.getElementById('copper-layers-btn')?.addEventListener('click', () => setCopperOnly());
     renderSidebar();
 
     // ── VS Code → WebView messages ────────────────────────────────────────────
@@ -440,6 +243,10 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
           payload.disabledReason = msg.payload.disabledReason || '';
           payload.fileName       = msg.payload.fileName || payload.fileName;
           payload.theme          = msg.payload.theme || payload.theme;
+          payload.fallbackBackground =
+            typeof msg.payload.fallbackBackground === 'string'
+              ? msg.payload.fallbackBackground
+              : payload.fallbackBackground;
           payload.restoreState   = msg.payload.restoreState || payload.restoreState;
           localState             = payload.restoreState || localState;
         }
@@ -447,6 +254,10 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       }
       if (msg.type === 'setTheme') {
         payload.theme = msg.payload?.theme || payload.theme;
+        payload.fallbackBackground =
+          typeof msg.payload?.fallbackBackground === 'string'
+            ? msg.payload.fallbackBackground
+            : payload.fallbackBackground;
         payload.restoreState = msg.payload?.restoreState || payload.restoreState;
         localState = payload.restoreState || localState;
         void initViewer();
@@ -472,6 +283,16 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     // ─────────────────────────────────────────────────────────────────────────
     async function initViewer() {
       clearKeyboardShortcuts();
+      clearFallbackResizeHandler();
+      fallbackSvgDataUrl = '';
+      fallbackSvgElement = null;
+      fallbackSvgWrapper = null;
+      fallbackSvgStage = null;
+      fallbackSvgSize = null;
+      fallbackSvgFitScale = 1;
+      fallbackSvgScale = 1;
+      viewerMount.replaceChildren();
+      setViewerSurfaceVisible(false);
       hideAll();
       showLoading('Waiting for KiCanvas…');
 
@@ -551,11 +372,38 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
         showLoading('Rendering ' + escapeHtml(payload.fileName) + '…');
         await waitForViewerLoaded(viewer, 15000);
 
+        const renderSurface = await waitForRenderableSurface(viewerMount, 2000);
+        if (!renderSurface) {
+          const fallbackLoaded = await trySvgFallback(
+            'KiCanvas reported success but did not create a drawable render surface.'
+          );
+          if (fallbackLoaded) {
+            return;
+          }
+          throw new Error(
+            'KiCanvas reported success but did not create a canvas or SVG render surface.'
+          );
+        }
+
+        if (renderSurface.tagName.toLowerCase() === 'canvas') {
+          const blankCanvas = await isCanvasEffectivelyBlank(renderSurface);
+          if (blankCanvas) {
+            const fallbackLoaded = await trySvgFallback(
+              'KiCanvas created a blank render surface for this file.'
+            );
+            if (fallbackLoaded) {
+              return;
+            }
+            throw new Error('KiCanvas created a blank render surface for this file.');
+          }
+        }
+
         // ── 6. Success ────────────────────────────────────────────────────────
         viewer.fitToScreen?.();
         applyLayerVisibility(viewer);
         applyViewerState(viewer);
         installSelectionTracking(viewer);
+        setViewerSurfaceVisible(true);
         hideAll();
         installKeyboardShortcuts(viewer);
         setStatus('Interactive renderer loaded: ' + payload.fileName);
@@ -613,6 +461,90 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
           }
         }, 120);
       });
+    }
+
+    function waitForRenderableSurface(container, timeoutMs) {
+      return new Promise((resolve) => {
+        const startedAt = Date.now();
+        const pickSurface = () => {
+          const canvases = Array.from(container.querySelectorAll('canvas'))
+            .filter((entry) => entry.width > 0 && entry.height > 0)
+            .sort((left, right) => (right.width * right.height) - (left.width * left.height));
+          if (canvases[0]) {
+            return canvases[0];
+          }
+          return Array.from(container.querySelectorAll('svg')).find(
+            (entry) => entry.clientWidth > 0 && entry.clientHeight > 0
+          );
+        };
+
+        const finish = (value) => {
+          observer.disconnect();
+          window.clearInterval(poll);
+          resolve(value);
+        };
+
+        const observer = new MutationObserver(() => {
+          const surface = pickSurface();
+          if (surface) {
+            finish(surface);
+          }
+        });
+
+        observer.observe(container, { childList: true, subtree: true });
+        const poll = window.setInterval(() => {
+          const surface = pickSurface();
+          if (surface) {
+            finish(surface);
+            return;
+          }
+          if (Date.now() - startedAt >= timeoutMs) {
+            finish(undefined);
+          }
+        }, 120);
+      });
+    }
+
+    async function isCanvasEffectivelyBlank(canvas) {
+      try {
+        const probe = document.createElement('canvas');
+        probe.width = 96;
+        probe.height = 96;
+        const context = probe.getContext('2d', { willReadFrequently: true });
+        if (!context) {
+          return false;
+        }
+
+        context.drawImage(canvas, 0, 0, probe.width, probe.height);
+        const imageData = context.getImageData(0, 0, probe.width, probe.height).data;
+        const buckets = new Map();
+        let opaquePixels = 0;
+
+        for (let index = 0; index < imageData.length; index += 4) {
+          const alpha = imageData[index + 3];
+          if (alpha < 8) {
+            continue;
+          }
+          opaquePixels += 1;
+          const key = [
+            imageData[index] >> 4,
+            imageData[index + 1] >> 4,
+            imageData[index + 2] >> 4,
+            alpha >> 4
+          ].join(':');
+          buckets.set(key, (buckets.get(key) || 0) + 1);
+        }
+
+        if (!opaquePixels) {
+          return true;
+        }
+
+        const dominantBucket = Math.max(...buckets.values());
+        const nonDominantPixels = opaquePixels - dominantBucket;
+        return buckets.size <= 2 && nonDominantPixels < 24;
+      } catch {
+        return false;
+      }
     }
 
     function hasDrawableObjects(text, fileType) {
@@ -881,6 +813,10 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
 
     function exportPng() {
       const canvas = viewerMount.querySelector('canvas');
+      if (!canvas && fallbackSvgDataUrl) {
+        void exportFallbackSvgAsPng();
+        return;
+      }
       if (!canvas) {
         showError('Export failed', 'No rendered canvas is available for PNG export.', '');
         return;
@@ -893,6 +829,459 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       vscode.postMessage({ type: 'exportSvg' });
     }
 
+    function fitCurrentViewer() {
+      const viewer = viewerMount.querySelector('kicanvas-embed');
+      if (viewer) {
+        viewer.fitToScreen?.();
+        localState = { ...localState, zoom: 1 };
+        postViewerState();
+        return;
+      }
+      if (fallbackSvgElement) {
+        fitSvgFallback(true);
+      }
+    }
+
+    function zoomCurrentViewer(direction) {
+      const viewer = viewerMount.querySelector('kicanvas-embed');
+      if (viewer) {
+        if (direction > 0) {
+          viewer.zoomIn?.();
+          localState = { ...localState, zoom: Number((localState.zoom + 0.1).toFixed(2)) };
+        } else {
+          viewer.zoomOut?.();
+          localState = { ...localState, zoom: Number(Math.max(0.1, localState.zoom - 0.1).toFixed(2)) };
+        }
+        postViewerState();
+        return;
+      }
+
+      if (!fallbackSvgWrapper || !fallbackSvgElement || !fallbackSvgSize) {
+        return;
+      }
+
+      stepFallbackZoom(
+        direction,
+        fallbackSvgWrapper.clientWidth / 2,
+        fallbackSvgWrapper.clientHeight / 2
+      );
+    }
+
+    async function trySvgFallback(reason) {
+      showLoading('Interactive renderer stayed blank. Requesting SVG fallback…');
+      const svgText = await requestSvgFallback(reason);
+      if (!svgText) {
+        return false;
+      }
+      showSvgFallback(svgText);
+      setStatus('CLI SVG fallback loaded: ' + payload.fileName);
+      return true;
+    }
+
+    function requestSvgFallback(reason) {
+      return new Promise((resolve) => {
+        const requestId = 'svg-fallback-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          resolve(undefined);
+        }, 15000);
+
+        function cleanup() {
+          window.clearTimeout(timeout);
+          window.removeEventListener('message', handleMessage);
+        }
+
+        function handleMessage(event) {
+          const message = event.data || {};
+          if (message.type !== 'svgFallback' && message.type !== 'svgFallbackUnavailable') {
+            return;
+          }
+          if (message.payload?.requestId !== requestId) {
+            return;
+          }
+          cleanup();
+          resolve(message.type === 'svgFallback' ? message.payload?.svg : undefined);
+        }
+
+        window.addEventListener('message', handleMessage);
+        vscode.postMessage({
+          type: 'requestSvgFallback',
+          payload: {
+            requestId,
+            reason
+          }
+        });
+      });
+    }
+
+    function showSvgFallback(svgText) {
+      const preparedSvg = prepareSvgFallback(svgText);
+      if (!preparedSvg) {
+        throw new Error('The fallback SVG could not be normalized for responsive rendering.');
+      }
+      fallbackSvgDataUrl = svgToDataUrl(preparedSvg.text);
+      const wrapper = document.createElement('div');
+      wrapper.id = 'svg-fallback-view';
+      wrapper.className = 'viewer-surface';
+      wrapper.tabIndex = 0;
+      const stage = document.createElement('div');
+      stage.id = 'svg-fallback-stage';
+      fallbackSvgElement = preparedSvg.element;
+      fallbackSvgWrapper = wrapper;
+      fallbackSvgStage = stage;
+      fallbackSvgSize = preparedSvg.size;
+      applyFallbackPresentation(wrapper, preparedSvg.element);
+      stage.appendChild(preparedSvg.element);
+      wrapper.appendChild(stage);
+      installFallbackNavigation(wrapper);
+      viewerMount.replaceChildren(wrapper);
+      requestAnimationFrame(() => {
+        fitSvgFallback(true);
+      });
+      setViewerSurfaceVisible(true);
+      hideAll();
+      clearKeyboardShortcuts();
+    }
+
+    function fitSvgFallback(resetScroll) {
+      if (!fallbackSvgElement || !fallbackSvgWrapper || !fallbackSvgSize) {
+        return;
+      }
+      const availableWidth = Math.max(1, fallbackSvgWrapper.clientWidth - 40);
+      const availableHeight = Math.max(1, fallbackSvgWrapper.clientHeight - 40);
+      fallbackSvgFitScale = Math.min(
+        availableWidth / fallbackSvgSize.width,
+        availableHeight / fallbackSvgSize.height,
+        1
+      );
+      fallbackSvgScale = fallbackSvgFitScale;
+      applyFallbackSvgScale(resetScroll !== false);
+    }
+
+    function applyFallbackPresentation(wrapper, svgElement) {
+      wrapper.style.background = resolveFallbackBackground();
+
+      if (payload.fileType === 'board') {
+        svgElement.style.background = 'transparent';
+        svgElement.style.borderRadius = '0';
+        svgElement.style.boxShadow = 'none';
+        return;
+      }
+
+      svgElement.style.background = '#ffffff';
+      svgElement.style.borderRadius = '12px';
+      svgElement.style.boxShadow = '0 18px 45px rgba(15, 23, 42, 0.22)';
+    }
+
+    function resolveFallbackBackground() {
+      const configured =
+        typeof payload.fallbackBackground === 'string' ? payload.fallbackBackground.trim() : '';
+
+      if (configured) {
+        return configured;
+      }
+
+      if (payload.fileType === 'board') {
+        return getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#001023';
+      }
+
+      if (payload.theme === 'light') {
+        return '#f8fafc';
+      }
+
+      return getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#f8fafc';
+    }
+
+    async function exportFallbackSvgAsPng() {
+      try {
+        const image = new Image();
+        await new Promise((resolve, reject) => {
+          image.onload = () => resolve(undefined);
+          image.onerror = () => reject(new Error('Unable to decode the SVG fallback image.'));
+          image.src = fallbackSvgDataUrl;
+        });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = image.naturalWidth || image.width || 1;
+        canvas.height = image.naturalHeight || image.height || 1;
+        const context = canvas.getContext('2d');
+        if (!context) {
+          throw new Error('A 2D canvas context is not available for PNG export.');
+        }
+        context.drawImage(image, 0, 0);
+        vscode.postMessage({ type: 'exportPng', payload: { dataUrl: canvas.toDataURL('image/png') } });
+      } catch (error) {
+        showError(
+          'Export failed',
+          error instanceof Error ? error.message : 'Unable to export the fallback SVG as PNG.',
+          ''
+        );
+      }
+    }
+
+    function svgToDataUrl(svgText) {
+      const bytes = new TextEncoder().encode(svgText);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let index = 0; index < bytes.length; index += chunkSize) {
+        const chunk = bytes.subarray(index, index + chunkSize);
+        binary += String.fromCharCode(...chunk);
+      }
+      return 'data:image/svg+xml;base64,' + btoa(binary);
+    }
+
+    function prepareSvgFallback(svgText) {
+      const parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+      if (parsed.querySelector('parsererror')) {
+        return undefined;
+      }
+      const svgRoot = parsed.documentElement;
+      if (!svgRoot || svgRoot.tagName.toLowerCase() !== 'svg') {
+        return undefined;
+      }
+
+      for (const node of Array.from(svgRoot.querySelectorAll('script, foreignObject'))) {
+        node.remove();
+      }
+
+      for (const element of Array.from(svgRoot.querySelectorAll('*'))) {
+        for (const attributeName of element.getAttributeNames()) {
+          if (/^on/i.test(attributeName)) {
+            element.removeAttribute(attributeName);
+          }
+        }
+      }
+
+      if (!svgRoot.getAttribute('xmlns')) {
+        svgRoot.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      }
+
+      const width = parseSvgLength(svgRoot.getAttribute('width'));
+      const height = parseSvgLength(svgRoot.getAttribute('height'));
+      if (!svgRoot.getAttribute('viewBox') && width && height) {
+        svgRoot.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+      }
+      const viewBox = parseSvgViewBox(svgRoot.getAttribute('viewBox'));
+      const intrinsicWidth = viewBox?.width ?? width;
+      const intrinsicHeight = viewBox?.height ?? height;
+      if (!intrinsicWidth || !intrinsicHeight) {
+        return undefined;
+      }
+
+      svgRoot.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      svgRoot.setAttribute('role', 'img');
+      svgRoot.setAttribute('aria-label', 'SVG fallback preview for ' + payload.fileName);
+
+      const serialized = new XMLSerializer().serializeToString(svgRoot);
+      const imported = document.importNode(svgRoot, true);
+      return {
+        text: serialized,
+        element: imported,
+        size: {
+          width: intrinsicWidth,
+          height: intrinsicHeight
+        }
+      };
+    }
+
+    function parseSvgLength(value) {
+      if (!value) {
+        return undefined;
+      }
+      const match = String(value).trim().match(new RegExp('^(-?\\\\d+(?:\\\\.\\\\d+)?)'));
+      if (!match) {
+        return undefined;
+      }
+      const parsed = Number(match[1]);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    }
+
+    function parseSvgViewBox(value) {
+      if (!value) {
+        return undefined;
+      }
+      const parts = String(value)
+        .trim()
+        .split(new RegExp('[\\\\s,]+'))
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isFinite(entry));
+      if (parts.length !== 4 || parts[2] <= 0 || parts[3] <= 0) {
+        return undefined;
+      }
+      return {
+        minX: parts[0],
+        minY: parts[1],
+        width: parts[2],
+        height: parts[3]
+      };
+    }
+
+    function installFallbackNavigation(wrapper) {
+      clearFallbackResizeHandler();
+      fallbackResizeHandler = () => {
+        fitSvgFallback(true);
+      };
+      window.addEventListener('resize', fallbackResizeHandler);
+
+      wrapper.addEventListener('wheel', (event) => {
+        if (!fallbackSvgElement || !fallbackSvgSize) {
+          return;
+        }
+        const canScrollVertically = wrapper.scrollHeight > wrapper.clientHeight + 1;
+        const canScrollHorizontally = wrapper.scrollWidth > wrapper.clientWidth + 1;
+        const shouldPan = event.shiftKey || event.altKey;
+
+        if (shouldPan) {
+          if (canScrollVertically) {
+            wrapper.scrollTop += event.deltaY;
+          }
+          if (canScrollHorizontally) {
+            wrapper.scrollLeft += event.shiftKey && Math.abs(event.deltaY) > Math.abs(event.deltaX)
+              ? event.deltaY
+              : event.deltaX;
+          }
+          event.preventDefault();
+          return;
+        }
+
+        {
+          const rect = wrapper.getBoundingClientRect();
+          stepFallbackZoom(
+            event.deltaY === 0 ? -event.deltaX : event.deltaY,
+            event.clientX - rect.left,
+            event.clientY - rect.top
+          );
+          event.preventDefault();
+          return;
+        }
+      }, { passive: false });
+
+      let dragState = null;
+      wrapper.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) {
+          return;
+        }
+        if (wrapper.scrollWidth <= wrapper.clientWidth && wrapper.scrollHeight <= wrapper.clientHeight) {
+          return;
+        }
+        dragState = {
+          x: event.clientX,
+          y: event.clientY,
+          left: wrapper.scrollLeft,
+          top: wrapper.scrollTop
+        };
+        wrapper.classList.add('is-dragging');
+        wrapper.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      });
+      wrapper.addEventListener('pointermove', (event) => {
+        if (!dragState) {
+          return;
+        }
+        wrapper.scrollLeft = dragState.left - (event.clientX - dragState.x);
+        wrapper.scrollTop = dragState.top - (event.clientY - dragState.y);
+      });
+      const stopDragging = (event) => {
+        if (!dragState) {
+          return;
+        }
+        dragState = null;
+        wrapper.classList.remove('is-dragging');
+        if (event?.pointerId !== undefined) {
+          try {
+            wrapper.releasePointerCapture?.(event.pointerId);
+          } catch {}
+        }
+      };
+      wrapper.addEventListener('pointerup', stopDragging);
+      wrapper.addEventListener('pointercancel', stopDragging);
+      wrapper.addEventListener('lostpointercapture', () => {
+        dragState = null;
+        wrapper.classList.remove('is-dragging');
+      });
+    }
+
+    function clearFallbackResizeHandler() {
+      if (!fallbackResizeHandler) {
+        return;
+      }
+      window.removeEventListener('resize', fallbackResizeHandler);
+      fallbackResizeHandler = null;
+    }
+
+    function applyFallbackSvgScale(resetScroll) {
+      if (!fallbackSvgElement || !fallbackSvgWrapper || !fallbackSvgStage || !fallbackSvgSize) {
+        return;
+      }
+      const renderedWidth = Math.max(1, Math.floor(fallbackSvgSize.width * fallbackSvgScale));
+      const renderedHeight = Math.max(1, Math.floor(fallbackSvgSize.height * fallbackSvgScale));
+      const innerWidth = Math.max(1, fallbackSvgWrapper.clientWidth - 40);
+      const innerHeight = Math.max(1, fallbackSvgWrapper.clientHeight - 40);
+      const stageWidth = Math.max(innerWidth, renderedWidth);
+      const stageHeight = Math.max(innerHeight, renderedHeight);
+      fallbackSvgStage.style.width = stageWidth + 'px';
+      fallbackSvgStage.style.height = stageHeight + 'px';
+      fallbackSvgElement.style.width = renderedWidth + 'px';
+      fallbackSvgElement.style.height = renderedHeight + 'px';
+      fallbackSvgElement.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      if (resetScroll) {
+        fallbackSvgWrapper.scrollLeft = Math.max(0, (fallbackSvgWrapper.scrollWidth - fallbackSvgWrapper.clientWidth) / 2);
+        fallbackSvgWrapper.scrollTop = Math.max(0, (fallbackSvgWrapper.scrollHeight - fallbackSvgWrapper.clientHeight) / 2);
+      }
+      localState = { ...localState, zoom: Number(fallbackSvgScale.toFixed(3)) };
+      postViewerState();
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    function stepFallbackZoom(direction, anchorX, anchorY) {
+      if (!fallbackSvgWrapper || !fallbackSvgElement || !fallbackSvgSize) {
+        return;
+      }
+
+      const zoomFactor = direction < 0 ? 1.12 : 1 / 1.12;
+      const nextScale = clamp(
+        fallbackSvgScale * zoomFactor,
+        Math.max(fallbackSvgFitScale * 0.5, 0.05),
+        getFallbackMaxZoomScale()
+      );
+      const cursorX = anchorX + fallbackSvgWrapper.scrollLeft;
+      const cursorY = anchorY + fallbackSvgWrapper.scrollTop;
+      const ratio = nextScale / fallbackSvgScale;
+      fallbackSvgScale = nextScale;
+      applyFallbackSvgScale(false);
+      const nextLeft = cursorX * ratio - anchorX;
+      const nextTop = cursorY * ratio - anchorY;
+      fallbackSvgWrapper.scrollLeft = clamp(
+        nextLeft,
+        0,
+        Math.max(0, fallbackSvgWrapper.scrollWidth - fallbackSvgWrapper.clientWidth)
+      );
+      fallbackSvgWrapper.scrollTop = clamp(
+        nextTop,
+        0,
+        Math.max(0, fallbackSvgWrapper.scrollHeight - fallbackSvgWrapper.clientHeight)
+      );
+    }
+
+    function getFallbackMaxZoomScale() {
+      if (!fallbackSvgSize) {
+        return Math.max(fallbackSvgFitScale * 12, fallbackSvgFitScale);
+      }
+
+      const intrinsicMaxDimension = Math.max(fallbackSvgSize.width, fallbackSvgSize.height, 1);
+      const maxRenderedDimension = payload.fileType === 'board' ? 24000 : 18000;
+      const absoluteMaxScale = maxRenderedDimension / intrinsicMaxDimension;
+      const relativeMaxScale = fallbackSvgFitScale * (payload.fileType === 'board' ? 64 : 48);
+
+      return Math.max(
+        fallbackSvgFitScale,
+        Math.min(relativeMaxScale, absoluteMaxScale)
+      );
+    }
+
     // ── State helpers ─────────────────────────────────────────────────────────
 
     function hideAll() {
@@ -901,7 +1290,12 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       emptyEl.hidden   = true;
     }
 
+    function setViewerSurfaceVisible(visible) {
+      viewerMount.classList.toggle('is-hidden', !visible);
+    }
+
     function showLoading(detail) {
+      setViewerSurfaceVisible(false);
       hideAll();
       loadingEl.hidden       = false;
       loadingDetail.textContent = detail || '';
@@ -909,6 +1303,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     }
 
     function showError(title, message, detail) {
+      setViewerSurfaceVisible(false);
       hideAll();
       errorEl.hidden          = false;
       errorTitle.textContent  = title   || 'Viewer error';
@@ -918,6 +1313,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     }
 
     function showEmpty(message, preview, title) {
+      setViewerSurfaceVisible(false);
       hideAll();
       emptyEl.hidden = false;
       if (emptyTitleEl) emptyTitleEl.textContent = title || 'No drawable objects yet';
@@ -966,7 +1362,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
   })();
   </script>
 </body>
-</html>`;
+</html>`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1014,6 +1410,7 @@ interface ViewerPayload {
   base64:         string;
   disabledReason: string;
   theme:          string;
+  fallbackBackground: string;
   metadata?:      ViewerMetadata | undefined;
   restoreState?: ViewerState | undefined;
 }
@@ -1092,8 +1489,22 @@ function resolveViewerPalette(theme: string): {
   };
 }
 
+function compactHtmlDocument(value: string): string {
+  return value
+    .replace(/\r\n/g, '\n')
+    .replace(/^[ \t]+/gm, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+}
+
 export function kicanvasUri(context: vscode.ExtensionContext, webview: vscode.Webview): string {
   return webview
     .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'kicanvas', 'kicanvas.js'))
+    .toString();
+}
+
+export function viewerCssUri(context: vscode.ExtensionContext, webview: vscode.Webview): string {
+  return webview
+    .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'kicanvas', 'viewer.css'))
     .toString();
 }

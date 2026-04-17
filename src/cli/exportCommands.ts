@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { COMMANDS, SETTINGS } from '../constants';
@@ -367,6 +368,41 @@ export class KiCadExportService {
     await this.showOutputFolder(outputDir);
   }
 
+  async renderViewerSvg(resource: vscode.Uri): Promise<string | undefined> {
+    const file = await this.resolveTargetFile(resource, ['.kicad_sch', '.kicad_pcb']);
+    if (!file) {
+      return undefined;
+    }
+
+    const detected = await this.detector.detect();
+    const versionMajor = Number(detected?.version.split('.')[0] ?? '0');
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kicadstudio-viewer-svg-'));
+    try {
+      const buildOptions = await this.getBuildOptions();
+      const commands = file.endsWith('.kicad_pcb')
+        ? this.buildViewerPcbSvgFallbackCommands(file, tempRoot, versionMajor)
+        : buildCliExportCommands('export-svg', file, tempRoot, buildOptions);
+
+      for (const command of commands) {
+        await this.runner.run({
+          command,
+          cwd: path.dirname(file),
+          progressTitle: 'Preparing viewer SVG fallback'
+        });
+      }
+
+      const svgPath = this.findViewerSvgOutput(tempRoot, file, commands);
+      return svgPath ? fs.readFileSync(svgPath, 'utf8') : undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Inline SVG fallback export failed for ${file}: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return undefined;
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }
+
   async exportIPC2581(resource?: vscode.Uri): Promise<void> {
     if (!(await this.detector.hasCapability('ipc2581'))) {
       void vscode.window.showWarningMessage('This KiCad version does not support IPC-2581 export.');
@@ -710,6 +746,134 @@ export class KiCadExportService {
     return outputDir;
   }
 
+  private buildViewerPcbSvgFallbackCommands(
+    file: string,
+    outputDir: string,
+    versionMajor: number
+  ): string[][] {
+    if (versionMajor < 9) {
+      return buildCliExportCommands('export-svg', file, outputDir);
+    }
+
+    const outputFile = path.join(outputDir, `${path.parse(file).name}-viewer.svg`);
+    const layers = this.resolveViewerPcbFallbackLayers(file);
+    return [[
+      'pcb',
+      'export',
+      'svg',
+      '--output',
+      outputFile,
+      '--layers',
+      layers.join(','),
+      '--mode-single',
+      '--page-size-mode',
+      '0',
+      '--drill-shape-opt',
+      '0',
+      file
+    ]];
+  }
+
+  private resolveViewerPcbFallbackLayers(file: string): string[] {
+    const preferredLayers = [
+      'F.Cu',
+      'In1.Cu',
+      'In2.Cu',
+      'In3.Cu',
+      'In4.Cu',
+      'B.Cu',
+      'F.SilkS',
+      'B.SilkS',
+      'F.Mask',
+      'B.Mask',
+      'Edge.Cuts',
+      'F.Fab',
+      'B.Fab',
+      'Dwgs.User',
+      'Cmts.User'
+    ];
+
+    try {
+      const raw = fs.readFileSync(file, 'utf8');
+      const definedLayers = Array.from(
+        raw.matchAll(/\(\s*\d+\s+"([^"]+)"\s+[A-Za-z_.-]+(?:\s+"[^"]+")?\s*\)/g),
+        (match) => match[1]
+      ).filter((entry): entry is string => Boolean(entry));
+
+      if (!definedLayers.length) {
+        return preferredLayers;
+      }
+
+      const defined = new Set(definedLayers);
+      const ordered = preferredLayers.filter((layer) => defined.has(layer));
+      const remainingCopper = definedLayers.filter(
+        (layer) => /\.Cu$/i.test(layer) && !ordered.includes(layer)
+      );
+      const remainingUseful = definedLayers.filter(
+        (layer) =>
+          !ordered.includes(layer) &&
+          !remainingCopper.includes(layer) &&
+          /(?:\.SilkS|\.Mask|\.Fab)$/i.test(layer)
+      );
+
+      return [...new Set([...ordered, ...remainingCopper, ...remainingUseful])];
+    } catch {
+      return preferredLayers;
+    }
+  }
+
+  private findViewerSvgOutput(
+    outputDir: string,
+    sourceFile: string,
+    commands: string[][]
+  ): string | undefined {
+    for (const command of commands) {
+      const outputIndex = command.indexOf('--output');
+      const configuredOutput = outputIndex >= 0 ? command[outputIndex + 1] : undefined;
+      if (
+        typeof configuredOutput === 'string' &&
+        configuredOutput.toLowerCase().endsWith('.svg') &&
+        fs.existsSync(configuredOutput)
+      ) {
+        return configuredOutput;
+      }
+    }
+
+    const candidates = collectFilesWithExtension(outputDir, '.svg');
+    if (!candidates.length) {
+      return undefined;
+    }
+
+    const sourceBase = path.parse(sourceFile).name.toLowerCase();
+    const scored = candidates
+      .map((candidate) => {
+        const parsed = path.parse(candidate);
+        const baseName = parsed.name.toLowerCase();
+        let score = 0;
+        if (baseName === sourceBase) {
+          score += 100;
+        } else if (baseName.startsWith(`${sourceBase}-`) || baseName.startsWith(`${sourceBase}_`)) {
+          score += 80;
+        } else if (candidate.toLowerCase().includes(sourceBase)) {
+          score += 40;
+        }
+
+        try {
+          score += Math.min(20, Math.round(fs.statSync(candidate).size / 1024));
+        } catch {
+          score += 0;
+        }
+
+        return {
+          candidate,
+          score
+        };
+      })
+      .sort((left, right) => right.score - left.score || left.candidate.localeCompare(right.candidate));
+
+    return scored[0]?.candidate;
+  }
+
   private async resolveTargetFile(
     resource: vscode.Uri | undefined,
     expectedExtensions: string[]
@@ -771,4 +935,29 @@ export class KiCadExportService {
       bomFields: vscode.workspace.getConfiguration().get<string[]>(SETTINGS.bomFields, [])
     };
   }
+}
+
+function collectFilesWithExtension(root: string, extension: string): string[] {
+  const files: string[] = [];
+  const pending = [root];
+
+  while (pending.length) {
+    const current = pending.pop();
+    if (!current || !fs.existsSync(current)) {
+      continue;
+    }
+
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const nextPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(nextPath);
+        continue;
+      }
+      if (entry.isFile() && nextPath.toLowerCase().endsWith(extension)) {
+        files.push(nextPath);
+      }
+    }
+  }
+
+  return files;
 }

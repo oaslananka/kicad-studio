@@ -6,7 +6,10 @@ import { SchematicEditorProvider } from '../../src/providers/schematicEditorProv
 import { PcbEditorProvider } from '../../src/providers/pcbEditorProvider';
 import { __setConfiguration, workspace } from './vscodeMock';
 
-type ProviderCtor = new (context: vscode.ExtensionContext) => {
+type ProviderCtor = new (
+  context: vscode.ExtensionContext,
+  svgFallbackProvider?: (uri: vscode.Uri) => Promise<string | undefined>
+) => {
   resolveCustomEditor(document: vscode.CustomDocument, webviewPanel: vscode.WebviewPanel): Promise<void>;
   dispose(): void;
 };
@@ -17,7 +20,10 @@ function createPanel() {
     cspSource: 'vscode-resource:',
     options: undefined,
     postMessage: jest.fn().mockResolvedValue(true),
-    onDidReceiveMessage: jest.fn(() => ({ dispose: jest.fn() })),
+    onDidReceiveMessage: jest.fn((callback: (message: unknown) => void) => {
+      (webview as { receiveMessage?: (message: unknown) => void }).receiveMessage = callback;
+      return { dispose: jest.fn() };
+    }),
     asWebviewUri: jest.fn((value) => value)
   };
 
@@ -36,7 +42,9 @@ function createPanel() {
     visible: true,
     reveal: jest.fn(),
     fireViewState: () => viewStateCallback?.({ webviewPanel: panel }),
-    fireDispose: () => disposeCallback?.()
+    fireDispose: () => disposeCallback?.(),
+    fireMessage: (message: unknown) =>
+      (webview as { receiveMessage?: (message: unknown) => unknown }).receiveMessage?.(message)
   };
 
   return panel;
@@ -104,6 +112,35 @@ describe.each([
     );
   });
 
+  it('serves SVG fallback requests through the provider bridge', async () => {
+    const provider = new ContextProvider(
+      {
+        extensionUri: vscode.Uri.file('/extension')
+      } as vscode.ExtensionContext,
+      async () => '<svg xmlns="http://www.w3.org/2000/svg"></svg>'
+    );
+    const panel = createPanel();
+    const document = {
+      uri: vscode.Uri.file(tempFile)
+    } as vscode.CustomDocument;
+
+    await provider.resolveCustomEditor(document, panel as unknown as vscode.WebviewPanel);
+    await panel.fireMessage({
+      type: 'requestSvgFallback',
+      payload: {
+        requestId: 'req-1'
+      }
+    });
+
+    expect(panel.webview.postMessage).toHaveBeenCalledWith({
+      type: 'svgFallback',
+      payload: {
+        requestId: 'req-1',
+        svg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>'
+      }
+    });
+  });
+
   it('untracks panels when the webview is disposed', async () => {
     const provider = new ContextProvider({
       extensionUri: vscode.Uri.file('/extension')
@@ -154,5 +191,52 @@ describe.each([
     expect(metadata.tuningProfiles?.[0]).toEqual(
       expect.objectContaining({ name: 'DDR4', layer: 'F.Cu' })
     );
+  });
+
+  it('passes the active KiCad board background color into the fallback payload', async () => {
+    if (extension !== '.kicad_pcb') {
+      return;
+    }
+
+    const originalAppData = process.env['APPDATA'];
+    const fakeAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'kicadstudio-appdata-'));
+    const kicadConfigDir = path.join(fakeAppData, 'kicad', '10.0');
+    fs.mkdirSync(path.join(kicadConfigDir, 'colors'), { recursive: true });
+    fs.writeFileSync(
+      path.join(kicadConfigDir, 'pcbnew.json'),
+      JSON.stringify({
+        appearance: {
+          color_theme: 'user'
+        }
+      }),
+      'utf8'
+    );
+    fs.writeFileSync(
+      path.join(kicadConfigDir, 'colors', 'user.json'),
+      JSON.stringify({
+        board: {
+          background: 'rgb(1, 2, 3)'
+        }
+      }),
+      'utf8'
+    );
+    process.env['APPDATA'] = fakeAppData;
+
+    try {
+      const provider = new ContextProvider({
+        extensionUri: vscode.Uri.file('/extension')
+      } as vscode.ExtensionContext);
+      const panel = createPanel();
+      const document = {
+        uri: vscode.Uri.file(tempFile)
+      } as vscode.CustomDocument;
+
+      await provider.resolveCustomEditor(document, panel as unknown as vscode.WebviewPanel);
+
+      expect(panel.webview.html).toContain('rgb(1, 2, 3)');
+    } finally {
+      process.env['APPDATA'] = originalAppData;
+      fs.rmSync(fakeAppData, { recursive: true, force: true });
+    }
   });
 });

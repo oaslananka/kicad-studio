@@ -11,7 +11,12 @@ import {
 import type { ViewerMetadata, ViewerState } from '../types';
 import { bufferToBase64 } from '../utils/fileUtils';
 import { asNumber, asRecord, asString, hasType, isRecord } from '../utils/webviewMessages';
-import { createKiCanvasViewerHtml, createViewerErrorHtml, kicanvasUri } from './viewerHtml';
+import {
+  createKiCanvasViewerHtml,
+  createViewerErrorHtml,
+  kicanvasUri,
+  viewerCssUri
+} from './viewerHtml';
 
 const PROGRESS_INLINE_WARNING_BYTES = 1 * 1024 * 1024;
 
@@ -20,6 +25,7 @@ interface ViewerPayload {
   base64: string;
   disabledReason: string;
   theme: string;
+  fallbackBackground: string;
   metadata?: ViewerMetadata | undefined;
   restoreState?: ViewerState;
 }
@@ -37,6 +43,8 @@ interface PanelInfo {
   state?: ViewerState | undefined;
   releaseTimer?: NodeJS.Timeout | undefined;
 }
+
+type ViewerSvgFallbackProvider = (uri: vscode.Uri) => Promise<string | undefined>;
 
 /**
  * Shared custom editor provider for KiCanvas-backed viewers.
@@ -56,7 +64,10 @@ export abstract class BaseKiCanvasEditorProvider
   private readonly stateByUri = new Map<string, ViewerState>();
   private theme = vscode.workspace.getConfiguration().get<string>(SETTINGS.viewerTheme, 'kicad');
 
-  constructor(protected readonly context: vscode.ExtensionContext) {
+  constructor(
+    protected readonly context: vscode.ExtensionContext,
+    private readonly svgFallbackProvider?: ViewerSvgFallbackProvider
+  ) {
     this.disposables.push(
       vscode.workspace.onDidSaveTextDocument((document) => {
         if (!document.fileName.endsWith(this.fileExtension)) {
@@ -90,6 +101,7 @@ export abstract class BaseKiCanvasEditorProvider
         type: 'setTheme',
         payload: {
           theme,
+          fallbackBackground: resolveViewerFallbackBackground(this.fileType, theme),
           restoreState: info.state ?? this.stateByUri.get(info.uri.toString())
         }
       });
@@ -194,6 +206,40 @@ export abstract class BaseKiCanvasEditorProvider
               this.stateByUri.set(document.uri.toString(), info.state);
             }
           }
+          if (message.type === 'requestSvgFallback') {
+            const payload = asRecord(message.payload);
+            const requestId = asString(payload?.['requestId']);
+            if (!requestId) {
+              return;
+            }
+
+            try {
+              const svg = await this.svgFallbackProvider?.(document.uri);
+              await webviewPanel.webview.postMessage(
+                svg
+                  ? {
+                      type: 'svgFallback',
+                      payload: {
+                        requestId,
+                        svg
+                      }
+                    }
+                  : {
+                      type: 'svgFallbackUnavailable',
+                      payload: {
+                        requestId
+                      }
+                    }
+              );
+            } catch {
+              await webviewPanel.webview.postMessage({
+                type: 'svgFallbackUnavailable',
+                payload: {
+                  requestId
+                }
+              });
+            }
+          }
         })
       );
       await this.postFile(webviewPanel, document.uri);
@@ -250,9 +296,11 @@ export abstract class BaseKiCanvasEditorProvider
       status: 'Opening interactive renderer...',
       cspSource: panel.webview.cspSource,
       kicanvasUri: kicanvasUri(this.context, panel.webview),
+      viewerCssUri: viewerCssUri(this.context, panel.webview),
       base64: payload.base64,
       disabledReason: payload.disabledReason,
       theme: payload.theme,
+      fallbackBackground: payload.fallbackBackground,
       ...(payload.metadata ? { metadata: payload.metadata } : {}),
       ...(payload.restoreState ? { restoreState: payload.restoreState } : {})
     });
@@ -270,6 +318,7 @@ export abstract class BaseKiCanvasEditorProvider
         base64: cached.base64,
         disabledReason: cached.disabledReason,
         theme: this.theme,
+        fallbackBackground: resolveViewerFallbackBackground(this.fileType, this.theme),
         ...(cached.metadata ? { metadata: cached.metadata } : {}),
         ...(restoreState ? { restoreState } : {})
       };
@@ -311,6 +360,7 @@ export abstract class BaseKiCanvasEditorProvider
       base64: nextPayload.base64,
       disabledReason: nextPayload.disabledReason,
       theme: this.theme,
+      fallbackBackground: resolveViewerFallbackBackground(this.fileType, this.theme),
       ...(nextPayload.metadata ? { metadata: nextPayload.metadata } : {}),
       ...(() => {
         const restoreState = this.stateByUri.get(cacheKey);
@@ -370,6 +420,103 @@ export abstract class BaseKiCanvasEditorProvider
   }
 }
 
+const BUILTIN_DEFAULT_BACKGROUNDS = {
+  board: 'rgb(0, 16, 35)',
+  schematic: 'rgb(245, 244, 239)'
+} as const;
+
+const BUILTIN_CLASSIC_BACKGROUNDS = {
+  board: 'rgb(0, 0, 0)',
+  schematic: 'rgb(255, 255, 255)'
+} as const;
+
+function resolveViewerFallbackBackground(
+  fileType: 'schematic' | 'board',
+  theme: string
+): string {
+  if (fileType === 'board') {
+    return readKiCadEditorBackground('board') ?? BUILTIN_DEFAULT_BACKGROUNDS.board;
+  }
+
+  if (theme !== 'kicad') {
+    return '';
+  }
+
+  return readKiCadEditorBackground('schematic') ?? BUILTIN_DEFAULT_BACKGROUNDS.schematic;
+}
+
+function readKiCadEditorBackground(fileType: 'schematic' | 'board'): string | undefined {
+  const configDir = resolveKiCadConfigDir();
+  if (!configDir) {
+    return undefined;
+  }
+
+  const settingsFile = path.join(configDir, fileType === 'board' ? 'pcbnew.json' : 'eeschema.json');
+  const settings = readJsonRecord(settingsFile);
+  const appearance = asRecord(settings?.['appearance']);
+  const selectedTheme = asString(appearance?.['color_theme']) ?? '_builtin_default';
+
+  if (selectedTheme === '_builtin_default') {
+    return BUILTIN_DEFAULT_BACKGROUNDS[fileType];
+  }
+
+  if (selectedTheme === '_builtin_classic') {
+    return BUILTIN_CLASSIC_BACKGROUNDS[fileType];
+  }
+
+  const themeFile = path.join(configDir, 'colors', `${selectedTheme}.json`);
+  const themeRecord = readJsonRecord(themeFile);
+  const section = asRecord(themeRecord?.[fileType === 'board' ? 'board' : 'schematic']);
+  const background = asString(section?.['background']);
+  return background ?? BUILTIN_DEFAULT_BACKGROUNDS[fileType];
+}
+
+function resolveKiCadConfigDir(): string | undefined {
+  const appData = process.env['APPDATA'];
+  if (!appData) {
+    return undefined;
+  }
+
+  const root = path.join(appData, 'kicad');
+  if (!fs.existsSync(root)) {
+    return undefined;
+  }
+
+  const versions = fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d+(?:\.\d+)*$/.test(entry.name))
+    .map((entry) => entry.name)
+    .sort(compareKiCadVersionsDescending);
+
+  const latest = versions[0];
+  return latest ? path.join(root, latest) : undefined;
+}
+
+function compareKiCadVersionsDescending(left: string, right: string): number {
+  const leftParts = left.split('.').map((part) => Number(part));
+  const rightParts = right.split('.').map((part) => Number(part));
+  const length = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = leftParts[index] ?? 0;
+    const rightPart = rightParts[index] ?? 0;
+    if (leftPart !== rightPart) {
+      return rightPart - leftPart;
+    }
+  }
+
+  return 0;
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> | undefined {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    return asRecord(JSON.parse(raw)) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const VIEWER_OUTBOUND_MESSAGE_TYPES = [
   'openInKiCad',
   'requestRefresh',
@@ -377,7 +524,8 @@ const VIEWER_OUTBOUND_MESSAGE_TYPES = [
   'selectionChanged',
   'exportPng',
   'exportSvg',
-  'componentSelected'
+  'componentSelected',
+  'requestSvgFallback'
 ];
 
 function readViewerState(value: unknown): ViewerState | undefined {

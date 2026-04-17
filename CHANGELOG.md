@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.4.1] - 2026-04-17
+
+### Changed
+
+- Moved the heavy viewer stylesheet into a bundled media asset so the production extension bundle stays under the release regression gate.
+
+### Fixed
+
+- Schematic and PCB viewers now fall back to CLI-generated SVG when KiCanvas reports success but renders blank or fails to produce a drawable surface.
+- Fallback viewers now preserve KiCad-like backgrounds, stable zoom/pan behavior, and persistent tool buttons across schematic and PCB documents.
+- Viewer loading no longer briefly flashes transient KiCanvas HUD controls before the final render mode is ready.
+
 ## [2.4.0] - 2026-04-16
 
 ### Added

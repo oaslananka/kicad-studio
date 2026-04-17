@@ -111,8 +111,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const treeProvider = new KiCadProjectTreeProvider();
   const bomViewProvider = new BomViewProvider(context, parser);
   const netlistViewProvider = new NetlistViewProvider(context, parser, cliRunner, logger);
-  const schematicEditorProvider = new SchematicEditorProvider(context);
-  const pcbEditorProvider = new PcbEditorProvider(context);
+  const schematicEditorProvider = new SchematicEditorProvider(
+    context,
+    async (resource) => exportService.renderViewerSvg(resource)
+  );
+  const pcbEditorProvider = new PcbEditorProvider(
+    context,
+    async (resource) => exportService.renderViewerSvg(resource)
+  );
   const gitDiffDetector = new GitDiffDetector(parser);
   const diffEditorProvider = new DiffEditorProvider(context, gitDiffDetector);
   const aiProviders = new AIProviderRegistry(context);
