@@ -5,6 +5,7 @@
 - Bumped `package.json` version to `2.4.0`.
 - Refreshed `package-lock.json` with `npm i --package-lock-only`.
 - Re-ran the local release baseline through lint, type-checking, unit/integration/E2E tests, build, package, audit, and bundle-size checks.
+- Installed the produced `kicadstudio-2.4.0.vsix` into a clean temporary VS Code profile and verified the extension is discoverable as `oaslananka.kicadstudio@2.4.0`.
 
 ## Files touched
 
@@ -40,4 +41,5 @@
 
 ## New risks
 
-- Git tag creation, Azure approval-gate review, and post-publish clean-profile smoke validation remain manual release operations outside this local pass.
+- Azure publish run `493` is waiting at the manual approval gate after producing the VSIX artifact.
+- Marketplace-side publish completion and a true post-publish smoke test against the published Marketplace artifact remain external release operations outside this local pass.
