@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { ViewerMetadata, ViewerState } from '../types';
+import { createNonce } from '../utils/nonce';
 
 
 export interface KiCanvasViewerHtmlOptions {
@@ -18,21 +19,6 @@ export interface KiCanvasViewerHtmlOptions {
   restoreState?: ViewerState | undefined;
 }
 
-/**
- * Build the WebView HTML for a schematic or PCB viewer.
- *
- * Architecture:
- *  1. KiCanvas bundle is loaded via <script src> — this defines the custom elements
- *  2. A second inline script runs AFTER KiCanvas loads and calls initViewer()
- *  3. initViewer() waits for customElements.whenDefined() to resolve, THEN creates
- *     <kicanvas-embed> + <kicanvas-source> and appends them — this guarantees the
- *     custom element constructor runs on freshly-created elements, not on pre-upgrade
- *     generic HTMLElement instances
- *  4. We poll viewer.loaded (the property, not the attribute) to detect render completion
- *
- * This approach deliberately avoids iframes to eliminate cross-origin and srcdoc
- * script-loading edge cases that caused silent blank renders.
- */
 export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): string {
   const nonce = createNonce();
   const themeName = options.theme ?? 'kicad';
@@ -50,7 +36,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     ...(options.restoreState ? { restoreState: options.restoreState } : {})
   };
 
-  return compactHtmlDocument(/* html */`<!DOCTYPE html>
+  return compactHtmlDocument(String.raw`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -97,10 +83,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
   </header>
 
   <main>
-    <!-- KiCanvas will be mounted here programmatically -->
     <div id="viewer-mount"></div>
-
-    <!-- Loading overlay (shown while KiCanvas initializes) -->
     <div id="loading-overlay" class="overlay" role="status" aria-label="Loading file...">
       <div id="loading-card" class="card loading-card">
         <div class="spinner" aria-hidden="true"></div>
@@ -108,8 +91,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
         <div id="loading-detail">Preparing ${escapeHtml(options.fileType === 'board' ? 'PCB' : 'schematic')} viewer…</div>
       </div>
     </div>
-
-    <!-- Error overlay -->
     <div id="error-overlay" class="overlay" hidden>
       <div class="card">
         <p class="error-title" id="error-title">Viewer error</p>
@@ -122,8 +103,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
         <pre class="error-detail" id="error-detail" aria-label="Error detail"></pre>
       </div>
     </div>
-
-    <!-- Empty file overlay -->
     <div id="empty-overlay" class="overlay" hidden>
       <div class="card">
         <h2 id="empty-title">No drawable objects yet</h2>
@@ -162,17 +141,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       </div>
     </aside>
   </main>
-
-  <!-- Payload embedded in HTML so it's available before postMessage -->
   <script id="viewer-payload" nonce="${nonce}" type="application/json">${escapeScriptJson(payload)}</script>
-
-  <!--
-    IMPORTANT: KiCanvas script is loaded FIRST.
-    The init script below runs AFTER KiCanvas has loaded and defined its custom
-    elements.  Creating kicanvas-embed / kicanvas-source BEFORE the definitions
-    are registered results in generic HTMLElement instances that are never
-    properly upgraded, causing a silent blank render.
-  -->
   <script src="${escapeAttr(options.kicanvasUri)}" nonce="${nonce}"></script>
 
   <script nonce="${nonce}">
@@ -180,8 +149,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     'use strict';
 
     const vscode = acquireVsCodeApi();
-
-    // ── DOM refs ─────────────────────────────────────────────────────────────
     const statusEl       = document.getElementById('viewer-status');
     const loadingEl      = document.getElementById('loading-overlay');
     const loadingDetail  = document.getElementById('loading-detail');
@@ -199,7 +166,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     const tuningSection  = document.getElementById('tuning-section');
     const selectionSummaryEl = document.getElementById('selection-summary');
 
-    // ── Payload ───────────────────────────────────────────────────────────────
     const payload = JSON.parse(
       document.getElementById('viewer-payload').textContent || '{}'
     );
@@ -218,7 +184,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       theme: payload.theme || 'kicad'
     };
 
-    // ── Button wiring ─────────────────────────────────────────────────────────
     document.getElementById('reload-btn').addEventListener('click', () => initViewer());
     document.getElementById('open-kicad-btn').addEventListener('click', openInKiCad);
     document.getElementById('error-reload-btn').addEventListener('click', () => initViewer());
@@ -233,11 +198,9 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     document.getElementById('copper-layers-btn')?.addEventListener('click', () => setCopperOnly());
     renderSidebar();
 
-    // ── VS Code → WebView messages ────────────────────────────────────────────
     window.addEventListener('message', (event) => {
       const msg = event.data || {};
       if (msg.type === 'load' || msg.type === 'refresh') {
-        // Extension re-sent fresh payload (e.g. file saved)
         if (msg.payload && msg.payload.base64 !== undefined) {
           payload.base64         = msg.payload.base64;
           payload.disabledReason = msg.payload.disabledReason || '';
@@ -268,7 +231,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       }
     });
 
-    // ── Global error guard ────────────────────────────────────────────────────
     window.addEventListener('error', (ev) => {
       showError('Script error', ev.message || 'Unknown error', '');
     });
@@ -277,10 +239,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       showError('Runtime error', reason, '');
     });
 
-    // ── Entry point ───────────────────────────────────────────────────────────
     void initViewer();
-
-    // ─────────────────────────────────────────────────────────────────────────
     async function initViewer() {
       clearKeyboardShortcuts();
       clearFallbackResizeHandler();
@@ -311,7 +270,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
           return;
         }
 
-        // ── 1. Decode ─────────────────────────────────────────────────────────
         let text;
         try {
           text = decodeBase64Utf8(payload.base64);
@@ -329,29 +287,12 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
           return;
         }
 
-        // ── 2. Check drawable ────────────────────────────────────────────────
-        if (!hasDrawableObjects(text, payload.fileType)) {
-          showEmpty(
-            payload.fileType === 'board'
-              ? 'This PCB does not contain any drawable objects yet (no footprints, tracks, or graphics).'
-              : 'This schematic does not contain any drawable objects yet (no symbols or wires).',
-            text.slice(0, 3000)
-          );
-          return;
-        }
+        const probablyEmpty = !hasDrawableObjects(text, payload.fileType);
 
-        // ── 3. Wait for KiCanvas custom element definitions ──────────────────
-        //
-        // This is the critical step. If we create <kicanvas-embed> before
-        // customElements.define() registers it, the element is just a plain
-        // HTMLElement and KiCanvas never processes its children, resulting in a
-        // blank white canvas.
-        //
         showLoading('Waiting for KiCanvas element definitions…');
         await waitForDefinition('kicanvas-embed', 8000);
         await waitForDefinition('kicanvas-source', 8000);
 
-        // ── 4. Build viewer elements ─────────────────────────────────────────
         showLoading('Mounting viewer…');
         const renderText = normalizeKiCanvasText(text, payload.fileType);
 
@@ -368,7 +309,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
         viewer.appendChild(source);
         viewerMount.replaceChildren(viewer);
 
-        // ── 5. Wait for render ────────────────────────────────────────────────
         showLoading('Rendering ' + escapeHtml(payload.fileName) + '…');
         await waitForViewerLoaded(viewer, 15000);
 
@@ -378,6 +318,16 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
             'KiCanvas reported success but did not create a drawable render surface.'
           );
           if (fallbackLoaded) {
+            return;
+          }
+          if (probablyEmpty) {
+            showEmpty(
+              payload.fileType === 'board'
+                ? 'This PCB file is structurally valid but currently only contains the board document skeleton.'
+                : 'This schematic file is structurally valid but currently only contains the document skeleton.',
+              text.slice(0, 3000),
+              'No drawable objects yet'
+            );
             return;
           }
           throw new Error(
@@ -392,6 +342,16 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
               'KiCanvas created a blank render surface for this file.'
             );
             if (fallbackLoaded) {
+              return;
+            }
+            if (probablyEmpty) {
+              showEmpty(
+                payload.fileType === 'board'
+                  ? 'This PCB file is structurally valid but currently only contains the board document skeleton.'
+                  : 'This schematic file is structurally valid but currently only contains the document skeleton.',
+                text.slice(0, 3000),
+                'No drawable objects yet'
+              );
               return;
             }
             throw new Error('KiCanvas created a blank render surface for this file.');
@@ -415,10 +375,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Helpers
-    // ─────────────────────────────────────────────────────────────────────────
-
     function waitForDefinition(tagName, timeoutMs) {
       return Promise.race([
         customElements.whenDefined(tagName),
@@ -437,7 +393,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
 
     function waitForViewerLoaded(viewer, timeoutMs) {
       return new Promise((resolve, reject) => {
-        // Immediate check
         if (viewer.loaded === true || viewer.getAttribute('loaded') !== null) {
           resolve(undefined);
           return;
@@ -451,8 +406,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
           ));
         }, timeoutMs);
 
-        // Poll both the property and the attribute (different KiCanvas versions
-        // use different mechanisms)
         const poll = window.setInterval(() => {
           if (viewer.loaded === true || viewer.getAttribute('loaded') !== null) {
             window.clearInterval(poll);
@@ -548,37 +501,31 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
     }
 
     function hasDrawableObjects(text, fileType) {
-      // RegExp constructor used here instead of regex literals.
-      // ESLint no-useless-escape fires on backslash sequences inside
-      // TypeScript template literals even when they are valid regex syntax.
       if (fileType === 'board') {
         return new RegExp(
-          '[(]\\\\s*(?:footprint|segment|via|zone|gr_line|gr_arc|gr_circle|gr_rect|gr_poly|gr_curve|gr_text|dimension|target|rule_area|board_stackup|stackup|embedded_fonts)\\\\b'
+          '[(]\\s*(?:footprint|segment|via|zone|gr_line|gr_arc|gr_circle|gr_rect|gr_poly|gr_curve|gr_text|dimension|target|rule_area|board_stackup|stackup|embedded_fonts)\\b'
         ).test(text);
       }
       return (
         new RegExp(
-          '[(]\\\\s*(?:symbol|wire|junction|no_connect|label|global_label|hierarchical_label|sheet|bus|bus_entry|polyline|rectangle|circle|arc|text|image|netclass_flag|directive_label)\\\\b'
+          '[(]\\s*(?:symbol|wire|junction|no_connect|label|global_label|hierarchical_label|sheet|bus|bus_entry|polyline|rectangle|circle|arc|text|image|netclass_flag|directive_label)\\b'
         ).test(text) ||
-        new RegExp('[(]\\\\s*lib_symbols\\\\b[\\\\s\\\\S]*?[(]\\\\s*symbol\\\\b').test(text)
+        new RegExp('[(]\\s*lib_symbols\\b[\\s\\S]*?[(]\\s*symbol\\b').test(text)
       );
     }
 
     function isUnsupportedLegacyKiCadPcb(text, fileType) {
       if (fileType !== 'board') return false;
 
-      const versionMatch = text.match(new RegExp('[(]\\\\s*kicad_pcb\\\\s+[(]\\\\s*version\\\\s+(\\\\d+)'));
+      const versionMatch = text.match(new RegExp('[(]\\s*kicad_pcb\\s+[(]\\s*version\\s+(\\d+)'));
       const version = versionMatch ? Number(versionMatch[1]) : 0;
 
       return version < 20210000 && new RegExp('[(]\\\\s*module\\\\b').test(text);
     }
 
     function normalizeKiCanvasText(text, fileType) {
-      if (fileType !== 'board' || new RegExp('[(]\\\\s*layers\\\\b').test(text)) return text;
+      if (fileType !== 'board' || new RegExp('[(]\\s*layers\\b').test(text)) return text;
 
-      // Some generated/minimal PCB files omit the layer table. KiCanvas expects
-      // at least the standard board layers to exist when building UI visibility
-      // controls, so provide them only in the inline render copy.
       const fallbackLayers = [
         '  (layers',
         '    (0 "F.Cu" signal)',
@@ -611,11 +558,11 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
         '    (57 "User.8" user)',
         '    (58 "User.9" user)',
         '  )'
-      ].join('\\n');
+      ].join('\n');
 
       return text.replace(
-        new RegExp('^\\\\s*[(]\\\\s*kicad_pcb\\\\b'),
-        '(kicad_pcb\\n' + fallbackLayers
+        new RegExp('^\\s*[(]\\s*kicad_pcb\\b'),
+        '(kicad_pcb\n' + fallbackLayers
       );
     }
 
@@ -1088,7 +1035,7 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       if (!value) {
         return undefined;
       }
-      const match = String(value).trim().match(new RegExp('^(-?\\\\d+(?:\\\\.\\\\d+)?)'));
+      const match = String(value).trim().match(new RegExp('^(-?\\d+(?:\\.\\d+)?)'));
       if (!match) {
         return undefined;
       }
@@ -1282,8 +1229,6 @@ export function createKiCanvasViewerHtml(options: KiCanvasViewerHtmlOptions): st
       );
     }
 
-    // ── State helpers ─────────────────────────────────────────────────────────
-
     function hideAll() {
       loadingEl.hidden = true;
       errorEl.hidden   = true;
@@ -1441,12 +1386,6 @@ function escapeScriptJson(value: unknown): string {
     .replace(/\//g, '\\u002f');
 }
 
-function createNonce(): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let i = 0; i < 32; i++) value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  return value;
-}
 
 function resolveViewerPalette(theme: string): {
   colorScheme: 'dark' | 'light';

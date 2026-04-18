@@ -115,7 +115,7 @@ export interface BomSummary {
 }
 
 export interface BomWebviewMessage {
-  type: 'setData' | 'highlight' | 'exportCsv' | 'exportXlsx' | 'rowSelected';
+  type: 'setData' | 'setStatus' | 'highlight' | 'exportCsv' | 'exportXlsx' | 'rowSelected';
   payload?: Record<string, unknown>;
 }
 

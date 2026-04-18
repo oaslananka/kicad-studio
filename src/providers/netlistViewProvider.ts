@@ -6,6 +6,7 @@ import type { NetlistNode } from '../types';
 import { SExpressionParser, type SNode } from '../language/sExpressionParser';
 import { KiCadCliRunner } from '../cli/kicadCliRunner';
 import { Logger } from '../utils/logger';
+import { createNonce } from '../utils/nonce';
 
 export class NetlistViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
@@ -140,13 +141,4 @@ export class NetlistViewProvider implements vscode.WebviewViewProvider, vscode.D
     const files = await vscode.workspace.findFiles('**/*.kicad_sch', '**/node_modules/**', 1);
     return files[0]?.fsPath;
   }
-}
-
-function createNonce(): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let index = 0; index < 32; index += 1) {
-    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return value;
 }

@@ -6,6 +6,7 @@ import { openDatasheet } from './datasheetOpener';
 import { ComponentSearchCache } from './componentSearchCache';
 import { LcscClient } from './lcscClient';
 import { OctopartClient } from './octopartClient';
+import { createNonce } from '../utils/nonce';
 
 export class ComponentSearchService {
   private detailsPanel: vscode.WebviewPanel | undefined;
@@ -121,8 +122,23 @@ export class ComponentSearchService {
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
   <style nonce="${nonce}">
-    body { font-family: Segoe UI, sans-serif; background: #0f172a; color: #e2e8f0; padding: 16px; }
-    button { margin-right: 8px; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--vscode-editor-background);
+      color: var(--vscode-foreground);
+      padding: 16px;
+    }
+    button {
+      margin-right: 8px;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      border-radius: 4px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
     pre { white-space: pre-wrap; }
   </style>
 </head>
@@ -133,7 +149,6 @@ export class ComponentSearchService {
   <p><strong>Source:</strong> ${escapeHtml(result.source)}</p>
   <button id="datasheet">Open Datasheet</button>
   <button id="copy">Copy MPN</button>
-  <button disabled>Insert into Schematic</button>
   <h2>Offers</h2>
   <pre>${escapeHtml(JSON.stringify(result.offers, null, 2))}</pre>
   <script nonce="${nonce}">
@@ -179,13 +194,4 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function createNonce(): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let i = 0; i < 32; i++) {
-    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return value;
 }

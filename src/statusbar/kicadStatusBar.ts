@@ -83,25 +83,25 @@ export class KiCadStatusBar implements vscode.Disposable {
 
     const drcText = this.drc
       ? this.drc.errors > 0
-        ? `DRC: ${this.drc.errors} ✗`
+        ? `$(error) DRC: ${this.drc.errors}`
         : this.drc.warnings > 0
-          ? `DRC: ${this.drc.warnings} ⚠`
-          : 'DRC: ✓'
+          ? `$(warning) DRC: ${this.drc.warnings}`
+          : '$(pass) DRC'
       : 'DRC: —';
     const ercText = this.erc
       ? this.erc.errors > 0
-        ? `ERC: ${this.erc.errors} ✗`
+        ? `$(error) ERC: ${this.erc.errors}`
         : this.erc.warnings > 0
-          ? `ERC: ${this.erc.warnings} ⚠`
-          : 'ERC: ✓'
+          ? `$(warning) ERC: ${this.erc.warnings}`
+          : '$(pass) ERC'
       : 'ERC: —';
     const aiText = !this.aiConfigured
-      ? 'AI: ○'
+      ? '$(circle-outline) AI'
       : this.aiHealthy === false
-        ? 'AI: ◔'
-        : 'AI: ●';
+        ? '$(warning) AI'
+        : '$(pass-filled) AI';
 
-    this.item.text = `$(circuit-board) ${this.cli.versionLabel} | ${drcText} | ${ercText} | ${aiText}`;
+    this.item.text = `$(circuit-board) ${this.cli.versionLabel}  ${drcText}  ${ercText}  ${aiText}`;
     this.item.tooltip = `CLI: ${this.cli.path}\nAI: ${
       !this.aiConfigured ? 'not configured' : this.aiHealthy === false ? 'configured, last check failed' : 'configured'
     }`;

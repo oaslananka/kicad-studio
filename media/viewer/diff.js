@@ -110,23 +110,38 @@
     });
   }
 
-  function renderDiffList(components) {
-    diffList.innerHTML = (components || [])
-      .map((component) => {
-        const reference = escapeHtml(component.reference || component.uuid || '?');
-        const type = escapeHtml(component.type || 'changed');
-        return `<button class="layer-item" data-reference="${reference}"><span class="badge">${type}</span><strong>${reference}</strong></button>`;
-      })
-      .join('');
+  const DIFF_TYPE_PREFIX = { added: '+', removed: '−', changed: '~' };
 
-    for (const button of diffList.querySelectorAll('button')) {
+  function renderDiffList(components) {
+    const fragment = document.createDocumentFragment();
+    for (const component of components || []) {
+      const reference = component.reference || component.uuid || '?';
+      const type = component.type || 'changed';
+      const prefix = DIFF_TYPE_PREFIX[type] ?? '~';
+
+      const button = document.createElement('button');
+      button.className = 'layer-item';
+      button.dataset.reference = reference;
+      button.setAttribute('aria-label', `${type} component: ${reference}`);
+
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      // Text prefix ensures the type is conveyed without relying on color alone.
+      badge.textContent = `${prefix} ${type}`;
+
+      const label = document.createElement('strong');
+      label.textContent = reference;
+
+      button.append(badge, label);
       button.addEventListener('click', () => {
         vscode.postMessage({
           type: 'navigate',
-          payload: { reference: button.dataset.reference }
+          payload: { reference }
         });
       });
+      fragment.appendChild(button);
     }
+    diffList.replaceChildren(fragment);
   }
 
   async function setDiff(payload) {

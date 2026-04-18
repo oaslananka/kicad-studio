@@ -133,8 +133,14 @@ export abstract class BaseKiCanvasEditorProvider
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
       };
       this.trackPanel(document.uri, webviewPanel);
-      this.disposables.push(
-        webviewPanel.onDidDispose(() => this.untrackPanel(document.uri, webviewPanel)),
+      // Use a per-panel disposable store so listeners are released when the panel closes,
+      // rather than accumulating in the instance-level array for the provider's lifetime.
+      const panelDisposables: vscode.Disposable[] = [];
+      panelDisposables.push(
+        webviewPanel.onDidDispose(() => {
+          this.untrackPanel(document.uri, webviewPanel);
+          panelDisposables.forEach((d) => d.dispose());
+        }),
         webviewPanel.onDidChangeViewState((event) => {
           const info = this.panelInfo.get(event.webviewPanel);
           if (!info) {
@@ -309,7 +315,7 @@ export abstract class BaseKiCanvasEditorProvider
   private async buildViewerPayload(uri: vscode.Uri): Promise<ViewerPayload> {
     const cacheKey = uri.toString();
     const fileName = path.basename(uri.fsPath);
-    const stat = fs.statSync(uri.fsPath);
+    const stat = await fs.promises.stat(uri.fsPath);
     const cached = this.fileCache.get(cacheKey);
     if (cached && cached.mtimeMs === stat.mtimeMs) {
       const restoreState = this.stateByUri.get(cacheKey);
@@ -472,12 +478,27 @@ function readKiCadEditorBackground(fileType: 'schematic' | 'board'): string | un
 }
 
 function resolveKiCadConfigDir(): string | undefined {
-  const appData = process.env['APPDATA'];
-  if (!appData) {
-    return undefined;
+  const os = process.platform;
+  let root: string;
+
+  if (os === 'win32') {
+    const appData = process.env['APPDATA'];
+    if (!appData) {
+      return undefined;
+    }
+    root = path.join(appData, 'kicad');
+  } else if (os === 'darwin') {
+    const home = process.env['HOME'];
+    if (!home) {
+      return undefined;
+    }
+    root = path.join(home, 'Library', 'Preferences', 'kicad');
+  } else {
+    // Linux / other POSIX
+    const configHome = process.env['XDG_CONFIG_HOME'] ?? path.join(process.env['HOME'] ?? '', '.config');
+    root = path.join(configHome, 'kicad');
   }
 
-  const root = path.join(appData, 'kicad');
   if (!fs.existsSync(root)) {
     return undefined;
   }

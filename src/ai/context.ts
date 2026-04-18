@@ -90,12 +90,15 @@ function readProjectVersion(projectFile: string | undefined): string | undefined
   }
   try {
     const raw = fs.readFileSync(projectFile, 'utf8');
-    const parsed = JSON.parse(raw) as { meta?: { filename?: string }; version?: string };
-    return typeof parsed.version === 'string' ? parsed.version : parsed.meta?.filename;
+    try {
+      const parsed = JSON.parse(raw) as { meta?: { filename?: string }; version?: string };
+      return typeof parsed.version === 'string' ? parsed.version : parsed.meta?.filename;
+    } catch {
+      const match = raw.match(/"version"\s*:\s*"([^"]+)"/);
+      return match?.[1];
+    }
   } catch {
-    const raw = fs.readFileSync(projectFile, 'utf8');
-    const match = raw.match(/"version"\s*:\s*"([^"]+)"/);
-    return match?.[1];
+    return undefined;
   }
 }
 

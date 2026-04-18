@@ -8,6 +8,7 @@ import { BomWebviewManager } from '../bom/bomWebviewManager';
 import { SExpressionParser } from '../language/sExpressionParser';
 import { readTextFileSync } from '../utils/fileUtils';
 import { asRecord, asString, hasType } from '../utils/webviewMessages';
+import { createNonce } from '../utils/nonce';
 
 export class BomViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly manager = new BomWebviewManager();
@@ -62,9 +63,10 @@ export class BomViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
   async refresh(): Promise<void> {
     const file = await this.findSchematicFile();
     if (!file) {
-      this.manager.setEntries([]);
+      this.manager.setStatus('No schematic opened.');
       return;
     }
+    this.manager.setLoading();
     this.currentFile = file;
     const entries = this.bomParser.parse(readTextFileSync(file));
     this.manager.setEntries(entries);
@@ -118,13 +120,4 @@ export class BomViewProvider implements vscode.WebviewViewProvider, vscode.Dispo
     const files = await vscode.workspace.findFiles('**/*.kicad_sch', '**/node_modules/**', 1);
     return files[0]?.fsPath;
   }
-}
-
-function createNonce(): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let index = 0; index < 32; index += 1) {
-    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return value;
 }

@@ -26,6 +26,7 @@ export class McpClient {
   private lastInstall: McpInstallStatus = { found: false, source: 'none' };
   private sessionId: string | undefined;
   private initializePromise: Promise<void> | undefined;
+  private nextRpcId = 1;
 
   constructor(
     private readonly detector: McpDetector,
@@ -216,7 +217,7 @@ export class McpClient {
     const primaryEndpoint = `${baseEndpoint}/mcp`;
     const requestBody = JSON.stringify({
       jsonrpc: '2.0',
-      id: Date.now(),
+      id: this.nextRpcId++,
       method,
       params
     });

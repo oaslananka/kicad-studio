@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { asRecord, hasType } from '../utils/webviewMessages';
 import { McpClient } from './mcpClient';
+import { createNonce } from '../utils/nonce';
 
 export class DesignIntentPanel {
   private static currentPanel: vscode.WebviewPanel | undefined;
@@ -20,7 +21,8 @@ export class DesignIntentPanel {
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
-        retainContextWhenHidden: true
+        retainContextWhenHidden: true,
+        localResourceRoots: []
       }
     );
 
@@ -65,20 +67,18 @@ export class DesignIntentPanel {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
   <style nonce="${nonce}">
     :root {
-      color-scheme: dark;
-      --bg: #020617;
-      --panel: #0f172a;
-      --border: rgba(148, 163, 184, 0.2);
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --accent: #0ea5e9;
+      --bg: var(--vscode-editor-background);
+      --panel: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+      --border: var(--vscode-panel-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+      --text: var(--vscode-foreground);
+      --muted: var(--vscode-descriptionForeground);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 18px;
       font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
-      background: linear-gradient(180deg, #020617, #0f172a);
+      background: var(--bg);
       color: var(--text);
     }
     h1 { margin-top: 0; font-size: 18px; }
@@ -91,11 +91,11 @@ export class DesignIntentPanel {
       gap: 6px;
       color: var(--muted);
     }
-    textarea, input, select, button {
+    textarea, input, select {
       font: inherit;
       color: var(--text);
-      background: var(--panel);
-      border: 1px solid var(--border);
+      background: var(--vscode-input-background, var(--panel));
+      border: 1px solid var(--vscode-input-border, var(--border));
       border-radius: 10px;
       padding: 10px 12px;
     }
@@ -104,42 +104,64 @@ export class DesignIntentPanel {
       resize: vertical;
     }
     button {
+      font: inherit;
       cursor: pointer;
-      background: linear-gradient(180deg, #0ea5e9, #0369a1);
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      border-radius: 10px;
+      padding: 10px 12px;
       font-weight: 600;
+    }
+    button:hover {
+      background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
     }
   </style>
 </head>
 <body>
   <h1>KiCad Design Intent</h1>
-  <form id="intent-form">
-    <label>Power tree references
-      <textarea name="powerTreeRefs" placeholder="U1, U2, L1, FB1"></textarea>
+  <form id="intent-form" aria-label="Design intent form">
+    <label for="powerTreeRefs">Power tree references
+      <textarea id="powerTreeRefs" name="powerTreeRefs" placeholder="U1, U2, L1, FB1"
+        aria-describedby="powerTreeRefs-hint"></textarea>
+      <small id="powerTreeRefs-hint" style="color:var(--muted);">Comma-separated component references that form the power delivery network.</small>
     </label>
-    <label>Connector references
-      <textarea name="connectorRefs" placeholder="J1, J2"></textarea>
+    <label for="connectorRefs">Connector references
+      <textarea id="connectorRefs" name="connectorRefs" placeholder="J1, J2"
+        aria-describedby="connectorRefs-hint"></textarea>
+      <small id="connectorRefs-hint" style="color:var(--muted);">External interface connectors on this board.</small>
     </label>
-    <label>Decoupling pairs
-      <textarea name="decouplingPairs" placeholder="U1:C4,C5"></textarea>
+    <label for="decouplingPairs">Decoupling pairs
+      <textarea id="decouplingPairs" name="decouplingPairs" placeholder="U1:C4,C5"
+        aria-describedby="decouplingPairs-hint"></textarea>
+      <small id="decouplingPairs-hint" style="color:var(--muted);">Format: IC_ref:cap_ref,cap_ref — associates bypass caps with their ICs.</small>
     </label>
-    <label>Analog / digital partitioning
-      <textarea name="partitioning" placeholder="ADC and RF sections isolated from motor power"></textarea>
+    <label for="partitioning">Analog / digital partitioning
+      <textarea id="partitioning" name="partitioning" placeholder="ADC and RF sections isolated from motor power"
+        aria-describedby="partitioning-hint"></textarea>
+      <small id="partitioning-hint" style="color:var(--muted);">Describe the ground plane split and analog/digital boundary rules.</small>
     </label>
-    <label>Sensor cluster references
-      <textarea name="sensorClusterRefs" placeholder="U4, U5, J3"></textarea>
+    <label for="sensorClusterRefs">Sensor cluster references
+      <textarea id="sensorClusterRefs" name="sensorClusterRefs" placeholder="U4, U5, J3"
+        aria-describedby="sensorClusterRefs-hint"></textarea>
+      <small id="sensorClusterRefs-hint" style="color:var(--muted);">Components that must be placed close together as a functional cluster.</small>
     </label>
-    <label>RF keepouts
-      <textarea name="rfKeepouts" placeholder="Antenna edge, matching network clearance"></textarea>
+    <label for="rfKeepouts">RF keepouts
+      <textarea id="rfKeepouts" name="rfKeepouts" placeholder="Antenna edge, matching network clearance"
+        aria-describedby="rfKeepouts-hint"></textarea>
+      <small id="rfKeepouts-hint" style="color:var(--muted);">Areas where copper pours and vias are restricted to avoid RF interference.</small>
     </label>
-    <label>Fabrication profile
-      <select name="fabricationProfile">
+    <label for="fabricationProfile">Fabrication profile
+      <select id="fabricationProfile" name="fabricationProfile"
+        aria-describedby="fabricationProfile-hint">
         <option value="generic">Generic</option>
         <option value="jlcpcb">JLCPCB</option>
         <option value="pcbway">PCBWay</option>
       </select>
+      <small id="fabricationProfile-hint" style="color:var(--muted);">Target fab house — affects layer naming and DRC rule defaults.</small>
     </label>
-    <label>Additional notes
-      <textarea name="notes" placeholder="Sensor clustering, RF keepouts, review constraints..."></textarea>
+    <label for="notes">Additional notes
+      <textarea id="notes" name="notes" placeholder="Sensor clustering, RF keepouts, review constraints..."></textarea>
     </label>
     <button type="submit">Save Design Intent</button>
   </form>
@@ -172,13 +194,4 @@ export class DesignIntentPanel {
 </body>
 </html>`;
   }
-}
-
-function createNonce(): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let index = 0; index < 32; index += 1) {
-    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return value;
 }

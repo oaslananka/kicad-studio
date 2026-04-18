@@ -139,7 +139,7 @@ export class LibrarySearchProvider {
   <p><strong>Library:</strong> ${escapeHtml(footprint.libraryName)}</p>
   <p><strong>Description:</strong> ${escapeHtml(footprint.description || 'No description')}</p>
   <p><strong>Tags:</strong> ${escapeHtml(footprint.tags.join(', ') || 'None')}</p>
-  ${svgMarkup ? `<div>${svgMarkup}</div>` : '<p>SVG preview unavailable. Showing metadata-only fallback.</p>'}
+  ${svgMarkup ? `<div>${sanitizeSvg(svgMarkup)}</div>` : '<p>SVG preview unavailable. Showing metadata-only fallback.</p>'}
   <pre>${escapeHtml(footprint.libraryPath)}</pre>
 </body>
 </html>`;
@@ -170,4 +170,16 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/**
+ * Strip potentially dangerous content from SVG markup before injecting into
+ * a webview.  Removes <script>, <foreignObject>, and inline event handlers.
+ * This is a defence-in-depth measure; the webview already has enableScripts:false.
+ */
+function sanitizeSvg(svg: string): string {
+  return svg
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<foreignObject\b[^>]*>[\s\S]*?<\/foreignObject\s*>/gi, '')
+    .replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s/>]*)/gi, '');
 }

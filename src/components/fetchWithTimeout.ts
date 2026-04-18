@@ -10,10 +10,17 @@ export async function fetchWithTimeout(
     controller.abort();
   }, timeoutMs);
 
+  // Compose the timeout signal with any caller-provided signal so both can cancel the request.
+  const signals: AbortSignal[] = [controller.signal];
+  if (init.signal instanceof AbortSignal) {
+    signals.push(init.signal);
+  }
+  const composedSignal = AbortSignal.any(signals);
+
   try {
     return await fetch(input, {
       ...init,
-      signal: controller.signal
+      signal: composedSignal
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {

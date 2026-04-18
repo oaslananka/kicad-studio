@@ -8,6 +8,14 @@ export class ContextBridge {
 
   constructor(private readonly client: McpClient) {}
 
+  dispose(): void {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = undefined;
+    }
+    this.pendingContext = null;
+  }
+
   async pushContext(context: StudioContext): Promise<void> {
     if (JSON.stringify(context) === JSON.stringify(this.lastContext)) {
       return;

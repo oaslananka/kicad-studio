@@ -12,6 +12,14 @@ export class BomWebviewManager {
     void this.view?.webview.postMessage(message);
   }
 
+  setLoading(): void {
+    this.postMessage({ type: 'setStatus', payload: { status: 'loading' } });
+  }
+
+  setStatus(text: string): void {
+    this.postMessage({ type: 'setStatus', payload: { status: 'message', text } });
+  }
+
   setEntries(entries: BomEntry[]): void {
     this.postMessage({
       type: 'setData',

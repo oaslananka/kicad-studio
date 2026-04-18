@@ -1,31 +1,39 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import * as vscode from 'vscode';
 import type { McpInstallStatus } from '../types';
 
-function run(command: string, args: string[]): { ok: boolean; output: string } {
-  try {
-    const result = spawnSync(command, args, {
-      encoding: 'utf8',
-      stdio: 'pipe'
+function runExecFile(
+  command: string,
+  args: string[],
+  timeoutMs: number
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { encoding: 'utf8', timeout: timeoutMs }, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve({ stdout: stdout ?? '', stderr: stderr ?? '' });
+      }
     });
-    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
-    return {
-      ok: result.status === 0,
-      output
-    };
+  });
+}
+
+async function run(command: string, args: string[]): Promise<{ ok: boolean; output: string }> {
+  try {
+    const { stdout, stderr } = await runExecFile(command, args, 8_000);
+    const output = `${stdout}\n${stderr}`.trim();
+    return { ok: true, output };
   } catch (error) {
-    return {
-      ok: false,
-      output: error instanceof Error ? error.message : String(error)
-    };
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, output: message };
   }
 }
 
 export class McpDetector {
   async detectKicadMcpPro(): Promise<McpInstallStatus> {
-    const uvxResult = this.tryUvx();
+    const uvxResult = await this.tryUvx();
     if (uvxResult.found) {
       return {
         found: true,
@@ -35,7 +43,7 @@ export class McpDetector {
       };
     }
 
-    const binaryResult = this.tryBinary();
+    const binaryResult = await this.tryBinary();
     if (binaryResult.found) {
       return {
         found: true,
@@ -45,7 +53,7 @@ export class McpDetector {
       };
     }
 
-    const pipResult = this.tryPip();
+    const pipResult = await this.tryPip();
     if (pipResult.found) {
       return {
         found: true,
@@ -55,7 +63,7 @@ export class McpDetector {
       };
     }
 
-    const pipxResult = this.tryPipx();
+    const pipxResult = await this.tryPipx();
     if (pipxResult.found) {
       return {
         found: true,
@@ -114,8 +122,8 @@ export class McpDetector {
     );
   }
 
-  private tryUvx(): { found: boolean; version?: string } {
-    const result = run('uvx', ['kicad-mcp-pro', '--version']);
+  private async tryUvx(): Promise<{ found: boolean; version?: string }> {
+    const result = await run('uvx', ['kicad-mcp-pro', '--version']);
     if (!result.ok) {
       return { found: false };
     }
@@ -126,8 +134,8 @@ export class McpDetector {
     };
   }
 
-  private tryBinary(): { found: boolean; version?: string } {
-    const result = run('kicad-mcp-pro', ['--version']);
+  private async tryBinary(): Promise<{ found: boolean; version?: string }> {
+    const result = await run('kicad-mcp-pro', ['--version']);
     if (!result.ok) {
       return { found: false };
     }
@@ -138,13 +146,13 @@ export class McpDetector {
     };
   }
 
-  private tryPip(): { found: boolean; version?: string } {
+  private async tryPip(): Promise<{ found: boolean; version?: string }> {
     for (const command of ['pip', 'pip3', 'python', 'python3']) {
       const args =
         command.startsWith('python')
           ? ['-m', 'pip', 'show', 'kicad-mcp-pro']
           : ['show', 'kicad-mcp-pro'];
-      const result = run(command, args);
+      const result = await run(command, args);
       if (!result.ok) {
         continue;
       }
@@ -160,8 +168,8 @@ export class McpDetector {
     return { found: false };
   }
 
-  private tryPipx(): { found: boolean; version?: string } {
-    const result = run('pipx', ['list']);
+  private async tryPipx(): Promise<{ found: boolean; version?: string }> {
+    const result = await run('pipx', ['list']);
     if (!result.ok || !/\bkicad-mcp-pro\b/i.test(result.output)) {
       return { found: false };
     }

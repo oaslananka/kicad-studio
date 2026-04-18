@@ -1,19 +1,18 @@
 :root {
-  color-scheme: dark light;
-  --bg: #0f172a;
-  --panel: #111827;
-  --panel-alt: #1e293b;
-  --text: #e2e8f0;
-  --muted: #94a3b8;
-  --border: rgba(148, 163, 184, 0.22);
-  --accent: #38bdf8;
+  --bg: var(--vscode-editor-background);
+  --panel: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --panel-alt: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  --text: var(--vscode-foreground);
+  --muted: var(--vscode-descriptionForeground);
+  --border: var(--vscode-panel-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+  --accent: var(--vscode-focusBorder);
 }
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top, #1e293b, #0f172a 60%);
+  background: var(--bg);
   color: var(--text);
-  font: 13px/1.5 "Segoe UI", sans-serif;
+  font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
 }
 
 #viewer-shell {
@@ -28,7 +27,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: rgba(15, 23, 42, 0.9);
+  background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
 
@@ -39,11 +38,15 @@ body {
 
 button {
   border: 1px solid var(--border);
-  background: var(--panel-alt);
-  color: var(--text);
+  background: var(--vscode-button-secondaryBackground, var(--panel-alt));
+  color: var(--vscode-button-secondaryForeground, var(--text));
   border-radius: 10px;
   padding: 6px 10px;
   cursor: pointer;
+}
+
+button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--panel-alt));
 }
 
 .separator {
@@ -74,7 +77,7 @@ button {
 #side-panel,
 #info-panel {
   padding: 16px;
-  background: rgba(15, 23, 42, 0.82);
+  background: var(--panel-alt);
   overflow: auto;
 }
 
@@ -90,7 +93,7 @@ button {
 #viewer-container {
   position: relative;
   min-height: 0;
-  background: rgba(15, 23, 42, 0.72);
+  background: var(--bg);
 }
 
 kicanvas-embed {
@@ -130,7 +133,7 @@ kicanvas-embed {
 
 .diff-pane-title {
   padding: 8px 12px;
-  background: rgba(15, 23, 42, 0.9);
+  background: var(--panel);
   border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-weight: 700;
@@ -153,7 +156,7 @@ kicanvas-embed {
   place-items: center;
   padding: 24px;
   color: var(--muted);
-  background: rgba(2, 6, 23, 0.28);
+  background: var(--bg);
   text-align: center;
 }
 
@@ -168,7 +171,7 @@ kicanvas-embed {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(2, 6, 23, 0.88);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
 }
 
 #error-overlay > div {
@@ -191,14 +194,14 @@ kicanvas-embed {
   display: grid;
   place-items: center;
   gap: 12px;
-  background: rgba(15, 23, 42, 0.9);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
 }
 
 .spinner {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 3px solid rgba(148, 163, 184, 0.35);
+  border: 3px solid var(--border);
   border-top-color: var(--accent);
   animation: spin 0.8s linear infinite;
 }
@@ -215,7 +218,7 @@ kicanvas-embed {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  background: rgba(30, 41, 59, 0.7);
+  background: var(--panel-alt);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
@@ -236,8 +239,8 @@ kicanvas-embed {
   gap: 6px;
   padding: 3px 8px;
   border-radius: 999px;
-  background: rgba(56, 189, 248, 0.12);
-  color: #bae6fd;
+  background: var(--vscode-badge-background, color-mix(in srgb, var(--accent) 15%, transparent));
+  color: var(--vscode-badge-foreground, var(--text));
 }
 
 @keyframes spin {

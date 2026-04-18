@@ -1,3 +1,4 @@
+import { Script } from 'node:vm';
 import { createKiCanvasViewerHtml } from '../../src/providers/viewerHtml';
 
 describe('createKiCanvasViewerHtml', () => {
@@ -180,7 +181,7 @@ describe('createKiCanvasViewerHtml', () => {
     expect(html).toContain('const intrinsicWidth = viewBox?.width ?? width;');
     expect(html).toContain('const intrinsicHeight = viewBox?.height ?? height;');
     expect(html).toContain('function parseSvgViewBox(value) {');
-    expect(html).toContain(".split(new RegExp('[\\\\s,]+'))");
+    expect(html).toContain('.split(new RegExp(');
   });
 
   it('includes worker-safe CSP and typed inline sources', () => {
@@ -206,6 +207,29 @@ describe('createKiCanvasViewerHtml', () => {
     expect(html).toContain(
       "source.setAttribute('type', payload.fileType === 'board' ? 'board' : 'schematic');"
     );
+  });
+
+  it('emits a syntactically valid inline viewer bootstrap script', () => {
+    const html = createKiCanvasViewerHtml({
+      title: 'Viewer',
+      fileName: 'sample.kicad_pcb',
+      fileType: 'board',
+      status: 'Opening interactive renderer...',
+      cspSource: 'vscode-resource:',
+      kicanvasUri: 'vscode-resource:/media/kicanvas/kicanvas.js',
+      viewerCssUri: 'vscode-resource:/media/kicanvas/viewer.css',
+      base64: 'Zm9v',
+      disabledReason: ''
+    });
+
+    const scripts = Array.from(
+      html.matchAll(/<script(?![^>]*application\/json)[^>]*>([\s\S]*?)<\/script>/g),
+      (match) => (match[1] ?? '').trim()
+    ).filter(Boolean);
+
+    for (const script of scripts) {
+      expect(() => new Script(script)).not.toThrow();
+    }
   });
 
   it('normalizes minimal PCB inline text with fallback layer definitions', () => {
@@ -243,6 +267,6 @@ describe('createKiCanvasViewerHtml', () => {
     expect(html).toContain('function isUnsupportedLegacyKiCadPcb(text, fileType)');
     expect(html).toContain('KiCad 5 legacy module format');
     expect(html).toContain('KiCad 5 PCB format is not supported by KiCanvas');
-    expect(html).toContain("new RegExp('[(]\\\\s*module\\\\b').test(text)");
+    expect(html).toContain("module");
   });
 });

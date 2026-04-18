@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { bufferToBase64 } from '../utils/fileUtils';
 import { GitDiffDetector } from '../git/gitDiffDetector';
 import { asRecord, asString, hasType } from '../utils/webviewMessages';
+import { createNonce } from '../utils/nonce';
 
 
 /**
@@ -200,7 +201,7 @@ export class DiffEditorProvider {
 </head>
 <body>
   <button id="refresh-btn">↻ Refresh</button>
-  <div id="summary" id="loading">Loading diff…</div>
+  <div id="summary">Loading diff…</div>
   <ul id="diff-list"></ul>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
@@ -242,13 +243,4 @@ export class DiffEditorProvider {
     const files = await vscode.workspace.findFiles('**/*.kicad_sch', '**/node_modules/**', 1);
     return files[0]?.fsPath;
   }
-}
-
-function createNonce(): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let index = 0; index < 32; index += 1) {
-    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return value;
 }

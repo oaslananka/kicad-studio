@@ -49,9 +49,9 @@ describe('KiCadStatusBar', () => {
     });
 
     expect(mainItem.text).toContain('KiCad 10.0.1');
-    expect(mainItem.text).toContain('DRC: 1 ⚠');
-    expect(mainItem.text).toContain('ERC: 2 ✗');
-    expect(mainItem.text).toContain('AI: ◔');
+    expect(mainItem.text).toContain('$(warning) DRC: 1');
+    expect(mainItem.text).toContain('$(error) ERC: 2');
+    expect(mainItem.text).toContain('$(warning) AI');
     expect(mainItem.tooltip).toContain('/opt/kicad/kicad-cli');
     expect(mcpItem.text).toBe('$(plug) MCP Connected');
 
@@ -89,9 +89,9 @@ describe('KiCadStatusBar', () => {
       mcpConnected: false
     });
 
-    expect(mainItem.text).toContain('DRC: ✓');
-    expect(mainItem.text).toContain('ERC: ✓');
-    expect(mainItem.text).toContain('AI: ●');
+    expect(mainItem.text).toContain('$(pass) DRC');
+    expect(mainItem.text).toContain('$(pass) ERC');
+    expect(mainItem.text).toContain('$(pass-filled) AI');
     expect(mcpItem.text).toBe('$(plug) MCP Available');
     expect(statusBar.getSnapshot().mcpAvailable).toBe(true);
 

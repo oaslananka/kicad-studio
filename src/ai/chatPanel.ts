@@ -9,6 +9,7 @@ import { asNumber, asRecord, asString, hasType } from '../utils/webviewMessages'
 import { AIProviderRegistry } from './aiProvider';
 import { getActiveAiContext } from './context';
 import { buildSystemPrompt, DEFAULT_AI_LANGUAGE, normalizeAiLanguage } from './prompts';
+import { createNonce } from '../utils/nonce';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -399,23 +400,20 @@ export class KiCadChatPanel implements vscode.Disposable {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${this.panel.webview.cspSource} data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}' ${this.panel.webview.cspSource};">
   <style nonce="${nonce}">
     :root {
-      color-scheme: dark;
-      --bg: #020617;
-      --panel: #0f172a;
-      --panel-2: #111827;
-      --border: rgba(148, 163, 184, 0.18);
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --assistant: #172554;
-      --user: #14532d;
-      --danger: #ef4444;
+      --bg: var(--vscode-editor-background);
+      --panel: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+      --panel-2: var(--vscode-sideBar-background, var(--vscode-editor-background));
+      --border: var(--vscode-panel-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+      --text: var(--vscode-foreground);
+      --muted: var(--vscode-descriptionForeground);
+      --accent: var(--vscode-focusBorder);
+      --danger: var(--vscode-errorForeground, #ef4444);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 0;
-      background: radial-gradient(circle at top, #0f172a 0%, #020617 62%);
+      background: var(--bg);
       color: var(--text);
       font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
       height: 100vh;
@@ -425,8 +423,7 @@ export class KiCadChatPanel implements vscode.Disposable {
     header, footer {
       padding: 12px 14px;
       border-bottom: 1px solid var(--border);
-      background: rgba(2, 6, 23, 0.88);
-      backdrop-filter: blur(10px);
+      background: var(--panel);
     }
     footer {
       border-top: 1px solid var(--border);
@@ -442,7 +439,7 @@ export class KiCadChatPanel implements vscode.Disposable {
     }
     select, input, textarea, button {
       border: 1px solid var(--border);
-      background: var(--panel);
+      background: var(--vscode-input-background, var(--panel));
       color: var(--text);
       border-radius: 10px;
       padding: 8px 10px;
@@ -455,15 +452,26 @@ export class KiCadChatPanel implements vscode.Disposable {
     }
     button {
       cursor: pointer;
-      background: linear-gradient(180deg, #0ea5e9, #0369a1);
-      color: white;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border-color: transparent;
       font-weight: 600;
     }
+    button:hover {
+      background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+    }
     button.secondary {
-      background: #1e293b;
+      background: var(--vscode-button-secondaryBackground, var(--panel-2));
+      color: var(--vscode-button-secondaryForeground, var(--text));
+      border-color: var(--border);
+    }
+    button.secondary:hover {
+      background: var(--vscode-button-secondaryHoverBackground, var(--panel-2));
     }
     button.danger {
-      background: linear-gradient(180deg, #ef4444, #b91c1c);
+      background: var(--vscode-inputValidation-errorBackground, var(--vscode-editorError-foreground, #b91c1c));
+      color: var(--vscode-button-foreground, white);
+      border-color: transparent;
     }
     #messages {
       overflow-y: auto;
@@ -479,15 +487,14 @@ export class KiCadChatPanel implements vscode.Disposable {
       padding: 12px 14px;
       white-space: normal;
       word-break: break-word;
-      box-shadow: 0 20px 40px rgba(2, 6, 23, 0.18);
     }
     .message.user {
       align-self: flex-end;
-      background: rgba(20, 83, 45, 0.9);
+      background: var(--vscode-diffEditor-insertedLineBackground, color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #22c55e) 15%, var(--panel)));
     }
     .message.assistant {
       align-self: flex-start;
-      background: rgba(23, 37, 84, 0.88);
+      background: var(--panel-2);
     }
     .meta {
       color: var(--muted);
@@ -540,8 +547,8 @@ export class KiCadChatPanel implements vscode.Disposable {
         <option value="gemini">Gemini</option>
       </select>
       <input id="model" type="text" placeholder="Model override (optional)" />
-      <button id="clear" class="secondary" type="button">Sohbeti Temizle</button>
-      <button id="cancel" class="danger" type="button">Durdur</button>
+      <button id="clear" class="secondary" type="button">Clear Chat</button>
+      <button id="cancel" class="danger" type="button">Stop</button>
       <span id="status" class="status">Ready</span>
     </div>
   </header>
@@ -550,8 +557,8 @@ export class KiCadChatPanel implements vscode.Disposable {
   </main>
   <footer>
     <div id="context-info" class="context-box"></div>
-    <textarea id="context-input" placeholder="Extra context for this turn (optional)"></textarea>
-    <textarea id="prompt-input" placeholder="Ask about DRC/ERC issues, net behavior, component choices, or fabrication risks..."></textarea>
+    <textarea id="context-input" aria-label="Extra context for this turn" placeholder="Extra context for this turn (optional)"></textarea>
+    <textarea id="prompt-input" aria-label="Ask a question about your KiCad design" placeholder="Ask about DRC/ERC issues, net behavior, component choices, or fabrication risks..."></textarea>
     <div class="composer-actions">
       <button id="send" type="button">Send</button>
     </div>
@@ -573,7 +580,14 @@ export class KiCadChatPanel implements vscode.Disposable {
 
     document.getElementById('send').addEventListener('click', sendPrompt);
     document.getElementById('cancel').addEventListener('click', () => vscode.postMessage({ type: 'cancel' }));
-    document.getElementById('clear').addEventListener('click', () => vscode.postMessage({ type: 'clear' }));
+    document.getElementById('clear').addEventListener('click', () => {
+      if (messagesEl.querySelectorAll('.message').length === 0) {
+        return;
+      }
+      if (confirm('Clear all chat messages? This cannot be undone.')) {
+        vscode.postMessage({ type: 'clear' });
+      }
+    });
     providerEl.addEventListener('change', postSelection);
     modelEl.addEventListener('change', postSelection);
     promptEl.addEventListener('keydown', (event) => {
@@ -714,13 +728,4 @@ export class KiCadChatPanel implements vscode.Disposable {
     this.disposables.forEach((disposable) => disposable.dispose());
     KiCadChatPanel.instance = undefined;
   }
-}
-
-function createNonce(): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let index = 0; index < 32; index += 1) {
-    value += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return value;
 }

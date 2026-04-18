@@ -4,7 +4,13 @@
   const toggleDnp = document.getElementById('toggle-dnp');
   const rowsEl = document.getElementById('bom-rows');
   const summaryText = document.getElementById('summary-text');
+  const loadingRow = document.getElementById('loading-row');
   const headers = [...document.querySelectorAll('th[data-key]')];
+
+  function setLoading(loading) {
+    loadingRow.classList.toggle('visible', loading);
+    loadingRow.setAttribute('aria-busy', loading ? 'true' : 'false');
+  }
   let entries = [];
   let sortKey = 'references';
   let sortDir = 1;
@@ -42,11 +48,23 @@
     rowsEl.replaceChildren(fragment);
 
     for (const row of rowsEl.querySelectorAll('tr')) {
-      row.addEventListener('click', () => {
+      row.setAttribute('tabindex', '0');
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', `Select component ${row.dataset.reference || ''}`);
+
+      const selectRow = () => {
         vscode.postMessage({
           type: 'rowSelected',
           payload: { reference: row.dataset.reference }
         });
+      };
+
+      row.addEventListener('click', selectRow);
+      row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          selectRow();
+        }
       });
     }
   }
@@ -120,10 +138,25 @@
 
   window.addEventListener('message', (event) => {
     const message = event.data;
+    if (message.type === 'setStatus') {
+      const payload = message.payload || {};
+      if (payload.status === 'loading') {
+        summaryText.textContent = 'Loading BOM...';
+        setLoading(true);
+      } else {
+        setLoading(false);
+        summaryText.textContent = payload.text || 'No schematic opened.';
+      }
+    }
     if (message.type === 'setData') {
+      setLoading(false);
       entries = message.payload.entries || [];
       const summary = message.payload.summary || { totalComponents: 0, uniqueValues: 0 };
-      summaryText.textContent = `${summary.totalComponents} components, ${summary.uniqueValues} unique rows`;
+      if (entries.length === 0) {
+        summaryText.textContent = 'No components found.';
+      } else {
+        summaryText.textContent = `${summary.totalComponents} components · ${summary.uniqueValues} unique rows`;
+      }
       render();
     }
     if (message.type === 'highlight') {

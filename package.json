@@ -526,7 +526,8 @@
       {
         "command": "kicadstudio.refreshFixQueue",
         "title": "KiCad: Refresh AI Fix Queue",
-        "category": "KiCad MCP"
+        "category": "KiCad MCP",
+        "icon": "$(refresh)"
       },
       {
         "command": "kicadstudio.applyFixQueueItem",
@@ -536,7 +537,8 @@
       {
         "command": "kicadstudio.variant.create",
         "title": "KiCad: New Variant",
-        "category": "KiCad Variants"
+        "category": "KiCad Variants",
+        "icon": "$(add)"
       },
       {
         "command": "kicadstudio.variant.setActive",
@@ -551,7 +553,8 @@
       {
         "command": "kicadstudio.variant.refresh",
         "title": "KiCad: Refresh Variants",
-        "category": "KiCad Variants"
+        "category": "KiCad Variants",
+        "icon": "$(refresh)"
       },
       {
         "command": "kicadstudio.drcRule.reveal",
@@ -561,7 +564,8 @@
       {
         "command": "kicadstudio.drcRule.addWithMcp",
         "title": "KiCad: Add DRC Rule with MCP",
-        "category": "KiCad DRC"
+        "category": "KiCad DRC",
+        "icon": "$(add)"
       },
       {
         "command": "kicadstudio.exportViewerSvg",
@@ -636,27 +640,27 @@
       ],
       "view/title": [
         {
-          "view": "kicadstudio.projectTree",
+          "when": "view == kicadstudio.projectTree",
           "command": "kicadstudio.refreshProjectTree",
           "group": "navigation"
         },
         {
-          "view": "kicadstudio.variants",
+          "when": "view == kicadstudio.variants",
           "command": "kicadstudio.variant.refresh",
           "group": "navigation"
         },
         {
-          "view": "kicadstudio.variants",
+          "when": "view == kicadstudio.variants",
           "command": "kicadstudio.variant.create",
           "group": "navigation"
         },
         {
-          "view": "kicadstudio.fixQueue",
+          "when": "view == kicadstudio.fixQueue",
           "command": "kicadstudio.refreshFixQueue",
           "group": "navigation"
         },
         {
-          "view": "kicadstudio.drcRules",
+          "when": "view == kicadstudio.drcRules",
           "command": "kicadstudio.drcRule.addWithMcp",
           "group": "navigation"
         }
@@ -1462,26 +1466,26 @@
     "lines": 75
   },
   "devDependencies": {
-    "@playwright/test": "^1.55.0",
+    "@playwright/test": "^1.59.1",
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.95.0",
-    "@typescript-eslint/eslint-plugin": "^8.58.1",
-    "@typescript-eslint/parser": "^8.58.1",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
+    "@typescript-eslint/parser": "^8.58.2",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "^3.7.1",
+    "@vscode/vsce": "^3.9.1",
     "c8": "^10.1.3",
-    "eslint": "^10.2.0",
+    "eslint": "^10.2.1",
     "jest": "^30.3.0",
     "mocha": "^11.7.5",
     "pngjs": "^7.0.0",
-    "prettier": "^3.8.2",
+    "prettier": "^3.8.3",
     "ts-jest": "^29.4.9",
     "ts-loader": "^9.5.7",
-    "typescript": "^6.0.2",
-    "webpack": "^5.106.1",
+    "typescript": "^6.0.3",
+    "webpack": "^5.106.2",
     "webpack-cli": "^7.0.2"
   },
   "dependencies": {

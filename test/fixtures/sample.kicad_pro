@@ -8,5 +8,13 @@
   },
   "board": {
     "file": "sample.kicad_pcb"
-  }
+  },
+  "activeVariant": "Default",
+  "variants": [
+    {
+      "name": "Default",
+      "isDefault": true,
+      "componentOverrides": []
+    }
+  ]
 }

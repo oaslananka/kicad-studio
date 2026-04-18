@@ -29,7 +29,9 @@ describe('diff viewer assets', () => {
   });
 
   it('keeps viewer webview templates free of unsafe CSP directives', () => {
-    for (const fileName of ['bom.html', 'netlist.html', 'pcb.html', 'schematic.html']) {
+    // pcb.html and schematic.html are generated dynamically by viewerHtml.ts,
+    // not static template files — only sidebar view templates are checked here.
+    for (const fileName of ['bom.html', 'netlist.html']) {
       const html = fs.readFileSync(path.join(root, 'media', 'viewer', fileName), 'utf8');
 
       expect(html).not.toContain('unsafe-inline');
