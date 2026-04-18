@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.4.2] - 2026-04-18
+
+### Fixed
+
+- Scoped KiCad Studio view-title actions correctly so they no longer leak into unrelated VS Code view headers.
+- Fixed the viewer webview bootstrap script generation so PCB and schematic custom editors no longer stall before the render pipeline starts.
+- Minimal KiCad 10 schematic and PCB files now attempt KiCanvas and CLI SVG fallback rendering before showing the empty-document overlay.
+
 ## [2.4.1] - 2026-04-17
 
 ### Changed
