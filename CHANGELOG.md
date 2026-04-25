@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.4.4] - 2026-04-26
+
+### Fixed
+
+- Preferred the repository-level `VSCE_PAT` and `OVSX_PAT` secrets for publishing, with Doppler as a fallback, so org CI/CD can publish without depending on a stale Doppler marketplace token.
+
 ## [2.4.3] - 2026-04-26
 
 ### Fixed

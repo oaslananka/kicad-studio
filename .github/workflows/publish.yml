@@ -82,9 +82,16 @@ jobs:
       - run: npm run build:prod
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@v3
-      - name: Publish extension with Doppler secrets
-        run: doppler run --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG" -- npm run publish
+      - name: Publish extension
+        shell: bash
+        run: |
+          if [ -n "${VSCE_PAT:-}" ]; then
+            npm run publish
+          else
+            doppler run --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG" -- npm run publish
+          fi
         env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           DOPPLER_PROJECT: ${{ secrets.DOPPLER_PROJECT }}
           DOPPLER_CONFIG: ${{ secrets.DOPPLER_CONFIG }}
@@ -107,9 +114,16 @@ jobs:
       - run: npm run build:prod
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@v3
-      - name: Publish Open VSX package with Doppler secrets
-        run: doppler run --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG" -- npx ovsx publish -p "$OVSX_PAT"
+      - name: Publish Open VSX package
+        shell: bash
+        run: |
+          if [ -n "${OVSX_PAT:-}" ]; then
+            npx ovsx publish -p "$OVSX_PAT"
+          else
+            doppler run --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG" -- npx ovsx publish -p "$OVSX_PAT"
+          fi
         env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           DOPPLER_PROJECT: ${{ secrets.DOPPLER_PROJECT }}
           DOPPLER_CONFIG: ${{ secrets.DOPPLER_CONFIG }}
