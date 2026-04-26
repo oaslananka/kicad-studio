@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
+import { KICAD_S_EXPRESSION_LANGUAGES } from '../constants';
 import { KEYWORD_DESCRIPTIONS } from './kicadSchemas';
 import { SExpressionParser, type SNode } from './sExpressionParser';
+
+const S_EXPRESSION_LANGUAGE_IDS = new Set<string>(KICAD_S_EXPRESSION_LANGUAGES);
 
 export class KiCadDiagnosticsProvider {
   constructor(
@@ -9,7 +12,7 @@ export class KiCadDiagnosticsProvider {
   ) {}
 
   update(document: vscode.TextDocument): void {
-    if (!document.languageId.startsWith('kicad-')) {
+    if (!S_EXPRESSION_LANGUAGE_IDS.has(document.languageId)) {
       return;
     }
 
@@ -19,14 +22,21 @@ export class KiCadDiagnosticsProvider {
       for (const error of this.parser.getErrors(ast)) {
         issues.push(
           new vscode.Diagnostic(
-            new vscode.Range(error.line, error.col, error.endLine, error.endCol),
+            new vscode.Range(
+              error.line,
+              error.col,
+              error.endLine,
+              error.endCol
+            ),
             error.message,
             vscode.DiagnosticSeverity.Error
           )
         );
       }
 
-      const schema = new Set((KEYWORD_DESCRIPTIONS[document.languageId] ?? new Map()).keys());
+      const schema = new Set(
+        (KEYWORD_DESCRIPTIONS[document.languageId] ?? new Map()).keys()
+      );
       this.collectUnknownTags(ast, issues, schema);
       this.diagnostics.set(document.uri, issues);
     } catch (error) {
@@ -41,7 +51,11 @@ export class KiCadDiagnosticsProvider {
     }
   }
 
-  private collectUnknownTags(node: SNode, issues: vscode.Diagnostic[], schema: Set<string>): void {
+  private collectUnknownTags(
+    node: SNode,
+    issues: vscode.Diagnostic[],
+    schema: Set<string>
+  ): void {
     const tag = this.getTag(node);
     if (tag && !schema.has(tag) && !this.isSafeTag(tag)) {
       const range = this.parser.getPosition(node);
@@ -53,7 +67,9 @@ export class KiCadDiagnosticsProvider {
         )
       );
     }
-    node.children?.forEach((child) => this.collectUnknownTags(child, issues, schema));
+    node.children?.forEach((child) =>
+      this.collectUnknownTags(child, issues, schema)
+    );
   }
 
   private getTag(node: SNode): string | undefined {
@@ -64,7 +80,9 @@ export class KiCadDiagnosticsProvider {
     if (!first) {
       return undefined;
     }
-    return first.type === 'atom' || first.type === 'string' ? String(first.value ?? '') : undefined;
+    return first.type === 'atom' || first.type === 'string'
+      ? String(first.value ?? '')
+      : undefined;
   }
 
   private isSafeTag(tag: string): boolean {

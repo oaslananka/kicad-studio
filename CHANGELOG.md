@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.4.5] - 2026-04-26
+
+### Fixed
+
+- Stopped S-expression diagnostics and language services from running on `.kicad_pro` / `.kicad_jobset` JSON project files, preventing false `Unknown KiCad node "{"` warnings on newly created KiCad projects.
+
 ## [2.4.4] - 2026-04-26
 
 ### Fixed

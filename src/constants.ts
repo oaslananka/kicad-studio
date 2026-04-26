@@ -32,6 +32,13 @@ export const KICAD_LANGUAGES = [
   'kicad-project',
   'kicad-drc'
 ] as const;
+export const KICAD_S_EXPRESSION_LANGUAGES = [
+  'kicad-schematic',
+  'kicad-pcb',
+  'kicad-symbol',
+  'kicad-footprint',
+  'kicad-drc'
+] as const;
 export const KICAD_FILE_EXTENSIONS = [
   '.kicad_pro',
   '.kicad_sch',
@@ -189,6 +196,12 @@ export const CLI_CAPABILITY_COMMANDS = {
   erc: ['sch', 'erc'],
   pcbImport: ['pcb', 'import']
 } as const;
-export const DOCUMENT_SELECTOR: vscode.DocumentSelector = KICAD_LANGUAGES.map((language) => ({
-  language
-}));
+export const DOCUMENT_SELECTOR: vscode.DocumentSelector = KICAD_LANGUAGES.map(
+  (language) => ({
+    language
+  })
+);
+export const S_EXPRESSION_DOCUMENT_SELECTOR: vscode.DocumentSelector =
+  KICAD_S_EXPRESSION_LANGUAGES.map((language) => ({
+    language
+  }));

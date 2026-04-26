@@ -21,12 +21,13 @@ import {
   COMMANDS,
   CONTEXT_KEYS,
   DIAGNOSTIC_COLLECTION_NAME,
-  DOCUMENT_SELECTOR,
+  KICAD_S_EXPRESSION_LANGUAGES,
   DRC_RULES_VIEW_ID,
   EXTENSION_ID,
   FIX_QUEUE_VIEW_ID,
   NETLIST_VIEW_ID,
   PCB_EDITOR_VIEW_TYPE,
+  S_EXPRESSION_DOCUMENT_SELECTOR,
   SCHEMATIC_EDITOR_VIEW_TYPE,
   SETTINGS,
   TREE_VIEW_ID,
@@ -62,12 +63,18 @@ import { KiCadStatusBar } from './statusbar/kicadStatusBar';
 import { KiCadTaskProvider } from './tasks/kicadTaskProvider';
 import { VariantProvider } from './variants/variantProvider';
 import { Logger } from './utils/logger';
-import { getActiveResourceUri, workspaceHasVariants } from './utils/workspaceUtils';
+import {
+  getActiveResourceUri,
+  workspaceHasVariants
+} from './utils/workspaceUtils';
 import type { DiagnosticSummary, McpInstallStatus } from './types';
 
 let extensionLogger: Logger | undefined;
+const S_EXPRESSION_LANGUAGE_IDS = new Set<string>(KICAD_S_EXPRESSION_LANGUAGES);
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
+export async function activate(
+  context: vscode.ExtensionContext
+): Promise<void> {
   const activationStartedAt = Date.now();
   const logger = new Logger('KiCad Studio');
   extensionLogger = logger;
@@ -102,18 +109,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const diagnosticsCollection = vscode.languages.createDiagnosticCollection(
     DIAGNOSTIC_COLLECTION_NAME
   );
-  const diagnosticsProvider = new KiCadDiagnosticsProvider(parser, diagnosticsCollection);
+  const diagnosticsProvider = new KiCadDiagnosticsProvider(
+    parser,
+    diagnosticsCollection
+  );
   const checkService = new KiCadCheckService(cliRunner, parser, logger);
   const treeProvider = new KiCadProjectTreeProvider();
   const bomViewProvider = new BomViewProvider(context, parser);
-  const netlistViewProvider = new NetlistViewProvider(context, parser, cliRunner, logger);
+  const netlistViewProvider = new NetlistViewProvider(
+    context,
+    parser,
+    cliRunner,
+    logger
+  );
   const schematicEditorProvider = new SchematicEditorProvider(
     context,
     async (resource) => exportService.renderViewerSvg(resource)
   );
-  const pcbEditorProvider = new PcbEditorProvider(
-    context,
-    async (resource) => exportService.renderViewerSvg(resource)
+  const pcbEditorProvider = new PcbEditorProvider(context, async (resource) =>
+    exportService.renderViewerSvg(resource)
   );
   const gitDiffDetector = new GitDiffDetector(parser);
   const diffEditorProvider = new DiffEditorProvider(context, gitDiffDetector);
@@ -158,20 +172,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         webviewOptions: { retainContextWhenHidden: true }
       }
     ),
-    vscode.window.registerCustomEditorProvider(PCB_EDITOR_VIEW_TYPE, pcbEditorProvider, {
-      supportsMultipleEditorsPerDocument: true,
-      webviewOptions: { retainContextWhenHidden: true }
-    }),
+    vscode.window.registerCustomEditorProvider(
+      PCB_EDITOR_VIEW_TYPE,
+      pcbEditorProvider,
+      {
+        supportsMultipleEditorsPerDocument: true,
+        webviewOptions: { retainContextWhenHidden: true }
+      }
+    ),
     vscode.languages.registerHoverProvider(
-      DOCUMENT_SELECTOR,
+      S_EXPRESSION_DOCUMENT_SELECTOR,
       new KiCadHoverProvider(parser)
     ),
     vscode.languages.registerDocumentSymbolProvider(
-      DOCUMENT_SELECTOR,
+      S_EXPRESSION_DOCUMENT_SELECTOR,
       new KiCadSymbolProvider(parser)
     ),
     vscode.languages.registerCompletionItemProvider(
-      DOCUMENT_SELECTOR,
+      S_EXPRESSION_DOCUMENT_SELECTOR,
       new KiCadCompletionProvider(parser),
       '('
     ),
@@ -180,13 +198,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerTreeDataProvider(FIX_QUEUE_VIEW_ID, fixQueueProvider),
     vscode.window.registerTreeDataProvider(DRC_RULES_VIEW_ID, drcRulesProvider),
     vscode.window.registerWebviewViewProvider(BOM_VIEW_ID, bomViewProvider),
-    vscode.window.registerWebviewViewProvider(NETLIST_VIEW_ID, netlistViewProvider),
+    vscode.window.registerWebviewViewProvider(
+      NETLIST_VIEW_ID,
+      netlistViewProvider
+    ),
     vscode.tasks.registerTaskProvider('kicad', new KiCadTaskProvider())
   );
 
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((document) => {
-      if (!document.languageId.startsWith('kicad-')) {
+      if (!isSExpressionDocument(document)) {
         return;
       }
       languageServer.invalidate(document.uri);
@@ -194,7 +215,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       diagnosticsProvider.update(document);
     }),
     vscode.workspace.onDidChangeTextDocument((event) => {
-      if (!event.document.languageId.startsWith('kicad-')) {
+      if (!isSExpressionDocument(event.document)) {
         return;
       }
       languageServer.scheduleParse(event.document);
@@ -203,9 +224,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!document.languageId.startsWith('kicad-')) {
         return;
       }
-      languageServer.invalidate(document.uri);
-      void languageServer.parseDocument(document);
-      diagnosticsProvider.update(document);
+      if (isSExpressionDocument(document)) {
+        languageServer.invalidate(document.uri);
+        void languageServer.parseDocument(document);
+        diagnosticsProvider.update(document);
+      }
       treeProvider.refresh();
       variantProvider.refresh();
       drcRulesProvider.refresh();
@@ -244,7 +267,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         logger.refreshLevel();
       }
       if (event.affectsConfiguration(SETTINGS.viewerTheme)) {
-        const theme = vscode.workspace.getConfiguration().get<string>(SETTINGS.viewerTheme, 'kicad');
+        const theme = vscode.workspace
+          .getConfiguration()
+          .get<string>(SETTINGS.viewerTheme, 'kicad');
         schematicEditorProvider.setTheme(theme);
         pcbEditorProvider.setTheme(theme);
       }
@@ -323,7 +348,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   await refreshContexts();
 
-  const isFirstInstall = !context.globalState.get<boolean>('kicadstudio.installed');
+  const isFirstInstall = !context.globalState.get<boolean>(
+    'kicadstudio.installed'
+  );
   if (isFirstInstall) {
     await context.globalState.update('kicadstudio.installed', true);
     await vscode.commands.executeCommand(
@@ -342,14 +369,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   async function refreshContexts(): Promise<void> {
     const activeUri = getActiveResourceUri();
     const hasProject =
-      (await vscode.workspace.findFiles('**/*.kicad_pro', '**/node_modules/**', 1)).length > 0 ||
-      (await vscode.workspace.findFiles('**/*.kicad_sch', '**/node_modules/**', 1)).length > 0 ||
-      (await vscode.workspace.findFiles('**/*.kicad_pcb', '**/node_modules/**', 1)).length > 0;
+      (
+        await vscode.workspace.findFiles(
+          '**/*.kicad_pro',
+          '**/node_modules/**',
+          1
+        )
+      ).length > 0 ||
+      (
+        await vscode.workspace.findFiles(
+          '**/*.kicad_sch',
+          '**/node_modules/**',
+          1
+        )
+      ).length > 0 ||
+      (
+        await vscode.workspace.findFiles(
+          '**/*.kicad_pcb',
+          '**/node_modules/**',
+          1
+        )
+      ).length > 0;
     const provider = await aiProviders.getProvider();
     const cli = await cliDetector.detect();
     const kicadVersionMajor = Number(cli?.version.split('.')[0] ?? '0');
     const hasVariants = await workspaceHasVariants();
-    await vscode.commands.executeCommand('setContext', CONTEXT_KEYS.hasProject, hasProject);
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.hasProject,
+      hasProject
+    );
     await vscode.commands.executeCommand(
       'setContext',
       CONTEXT_KEYS.schematicOpen,
@@ -386,7 +435,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
   }
 
-  async function runConfiguredSaveChecks(document: vscode.TextDocument): Promise<void> {
+  async function runConfiguredSaveChecks(
+    document: vscode.TextDocument
+  ): Promise<void> {
     const config = vscode.workspace.getConfiguration();
     const shouldRunDrc =
       document.fileName.endsWith('.kicad_pcb') &&
@@ -403,8 +454,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const result = shouldRunDrc
         ? await checkService.runDRC(document.fileName)
         : await checkService.runERC(document.fileName);
-      diagnosticsCollection.set(vscode.Uri.file(document.fileName), result.diagnostics);
-      statusBar.update(shouldRunDrc ? { drc: result.summary } : { erc: result.summary });
+      diagnosticsCollection.set(
+        vscode.Uri.file(document.fileName),
+        result.diagnostics
+      );
+      statusBar.update(
+        shouldRunDrc ? { drc: result.summary } : { erc: result.summary }
+      );
       if (shouldRunDrc) {
         latestDrcRun = {
           file: document.fileName,
@@ -465,7 +521,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (
       state.available &&
       !state.connected &&
-      vscode.workspace.getConfiguration().get<boolean>(SETTINGS.mcpAutoDetect, true)
+      vscode.workspace
+        .getConfiguration()
+        .get<boolean>(SETTINGS.mcpAutoDetect, true)
     ) {
       await maybeOfferMcpBootstrap(state.install);
     }
@@ -526,12 +584,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }> {
     const activeUri = getActiveResourceUri();
     const activeEditor = vscode.window.activeTextEditor;
-    const fileType =
-      activeUri?.fsPath.endsWith('.kicad_sch')
-        ? 'schematic'
-        : activeUri?.fsPath.endsWith('.kicad_pcb')
-          ? 'pcb'
-          : 'other';
+    const fileType = activeUri?.fsPath.endsWith('.kicad_sch')
+      ? 'schematic'
+      : activeUri?.fsPath.endsWith('.kicad_pcb')
+        ? 'pcb'
+        : 'other';
     const viewerState =
       fileType === 'pcb' && activeUri
         ? pcbEditorProvider.getViewerState(activeUri)
@@ -543,7 +600,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       activeFile: activeUri?.fsPath,
       fileType,
       drcErrors:
-        latestDrcRun?.diagnostics.map((diagnostic) => diagnostic.message).slice(0, 20) ?? [],
+        latestDrcRun?.diagnostics
+          .map((diagnostic) => diagnostic.message)
+          .slice(0, 20) ?? [],
       selectedReference: viewerState?.selectedReference,
       selectedArea: viewerState?.selectedArea,
       cursorPosition: activeEditor
@@ -554,7 +613,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         : undefined,
       activeSheetPath:
         fileType === 'schematic' && activeUri
-          ? path.relative(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '', activeUri.fsPath)
+          ? path.relative(
+              vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
+              activeUri.fsPath
+            )
           : undefined,
       visibleLayers: viewerState?.activeLayers,
       activeVariant: await variantProvider.getActiveVariantName(),
@@ -569,6 +631,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
   extensionLogger?.info('Deactivating KiCad Studio...');
+}
+
+function isSExpressionDocument(document: vscode.TextDocument): boolean {
+  return S_EXPRESSION_LANGUAGE_IDS.has(document.languageId);
 }
 
 async function migrateDeprecatedSecretSettings(
@@ -610,7 +676,9 @@ async function migrateDeprecatedSecretSetting(args: {
   }
 
   await clearDeprecatedSetting(config, args.settingKey, args.logger);
-  args.logger.warn(`${args.label} API key was migrated from deprecated plaintext settings to VS Code SecretStorage.`);
+  args.logger.warn(
+    `${args.label} API key was migrated from deprecated plaintext settings to VS Code SecretStorage.`
+  );
   void vscode.window.showInformationMessage(
     `${args.label} API key was moved from deprecated settings to VS Code SecretStorage. Plaintext runtime fallback is disabled in KiCad Studio v2.`
   );
@@ -637,4 +705,3 @@ async function clearDeprecatedSetting(
     }
   }
 }
-
