@@ -120,7 +120,7 @@ jobs:
           if [ -n "${OVSX_PAT:-}" ]; then
             npx ovsx publish -p "$OVSX_PAT"
           else
-            doppler run --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG" -- npx ovsx publish -p "$OVSX_PAT"
+            doppler run --project "$DOPPLER_PROJECT" --config "$DOPPLER_CONFIG" -- sh -c 'npx ovsx publish -p "$OVSX_PAT"'
           fi
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
