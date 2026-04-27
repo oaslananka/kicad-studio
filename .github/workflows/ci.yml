@@ -46,3 +46,25 @@ jobs:
         with:
           name: coverage-${{ matrix.os }}
           path: coverage/
+
+  integration-real-server:
+    name: Real kicad-mcp-pro integration
+    if: >-
+      (github.repository_owner == 'oaslananka-lab' || github.event_name == 'workflow_dispatch') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      SKIP_REAL_SERVER: ${{ secrets.SKIP_REAL_SERVER }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.14.1
+          package-manager-cache: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - run: npm install -g npm@11.13.0
+      - run: npm ci
+      - run: npm run test:integration:real

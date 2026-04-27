@@ -15,6 +15,8 @@ import type { KiCadLibraryIndexer } from '../library/libraryIndexer';
 import type { LibrarySearchProvider } from '../library/librarySearchProvider';
 import type { VariantProvider } from '../variants/variantProvider';
 import type { DrcRulesProvider } from '../drc/drcRulesProvider';
+import type { McpLogger } from '../mcp/mcpLogger';
+import type { QualityGateProvider } from '../providers/qualityGateProvider';
 import type { KiCadProjectTreeProvider } from '../providers/projectTreeProvider';
 import type { Logger } from '../utils/logger';
 import type { DiagnosticSummary } from '../types';
@@ -38,6 +40,8 @@ export interface CommandServices {
   errorAnalyzer: ErrorAnalyzer;
   circuitExplainer: CircuitExplainer;
   mcpClient: McpClient;
+  mcpLogger: McpLogger;
+  qualityGateProvider: QualityGateProvider;
   libraryIndexer: KiCadLibraryIndexer;
   librarySearch: LibrarySearchProvider;
   variantProvider: VariantProvider;

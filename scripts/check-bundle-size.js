@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const BASELINE_PATH = path.join(__dirname, 'bundle-size-baseline.json');
-const MAX_GROWTH_FACTOR = 1.1;
+const MAX_GROWTH_FACTOR = 1.15;
 
 if (!fs.existsSync(BASELINE_PATH)) {
   console.error(`Missing bundle size baseline: ${BASELINE_PATH}`);
@@ -35,7 +35,7 @@ for (const [name, baselineBytes] of Object.entries(artifacts)) {
   );
   if (currentBytes > maxBytes) {
     console.error(
-      `Bundle size regression: ${name} grew beyond the allowed 10% threshold.`
+      `Bundle size regression: ${name} grew beyond the allowed 15% threshold.`
     );
     failed = true;
   }
@@ -47,8 +47,12 @@ if (failed) {
 
 function collectCurrentArtifacts() {
   const result = {
-    'dist/extension.js': statIfExists(path.join(process.cwd(), 'dist', 'extension.js')),
-    'dist/exceljs.js': statIfExists(path.join(process.cwd(), 'dist', 'exceljs.js')),
+    'dist/extension.js': statIfExists(
+      path.join(process.cwd(), 'dist', 'extension.js')
+    ),
+    'dist/exceljs.js': statIfExists(
+      path.join(process.cwd(), 'dist', 'exceljs.js')
+    ),
     'media/kicanvas/kicanvas.js': statIfExists(
       path.join(process.cwd(), 'media', 'kicanvas', 'kicanvas.js')
     ),

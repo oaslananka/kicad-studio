@@ -73,3 +73,26 @@ stages:
           - publish: $(Build.ArtifactStagingDirectory)
             displayName: Publish VSIX artifact
             artifact: kicadstudio-vsix
+
+      - job: RealServerIntegration
+        displayName: Real kicad-mcp-pro integration
+        dependsOn: CrossPlatform
+        condition: and(succeeded(), ne(variables['SKIP_REAL_SERVER'], 'true'))
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+          - task: UseNode@1
+            displayName: Use Node.js $(NodeVersion)
+            inputs:
+              version: $(NodeVersion)
+          - script: |
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+              echo "##vso[task.prependpath]$HOME/.local/bin"
+            displayName: Install uv
+          - script: npm install -g npm@11.13.0
+            displayName: Pin npm toolchain
+          - script: npm ci
+            displayName: Install dependencies
+          - script: npm run test:integration:real
+            displayName: Real MCP integration tests

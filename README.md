@@ -20,14 +20,15 @@ KiCad Studio turns VS Code into a practical KiCad workspace: view schematics and
 - Azure DevOps and GitLab are kept as manual fallback pipelines.
 - Personal GitHub remains the main source mirror.
 
-## What's New For KiCad 10
+## What's New In 2.6.0
 
-- KiCad 10-aware viewer metadata for layer summaries, tuning profiles, and selection context.
-- KiCad design variants sidebar with active-variant switching and BOM override diffing.
-- `.kicad_dru` language support, schema wiring, and DRC rules sidebar.
-- 3D PDF export command through `kicad-cli pcb export 3dpdf`.
-- Optional MCP bridge for context push, fix queue surfacing, and design intent editing.
-- AI prompt updates for KiCad 10 concepts such as variants, graphical DRC rules, hop-over display, and time-domain tuning.
+- MCP compatibility negotiation for `kicad-mcp-pro >=3.0.0 <4.0.0`, with recommended status for `>=3.0.2 <4.0.0`.
+- Quality Gates sidebar for project, placement, transfer, and manufacturing readiness checks.
+- One-click `kicad-mcp-pro` installer with `uvx`, `pipx`, and `pip` fallback options.
+- MCP profile picker for `full`, `minimal`, `schematic_only`, `pcb_only`, `manufacturing`, `high_speed`, `power`, `simulation`, `analysis`, and `agent_full`.
+- Code Actions for MCP fix queue items that include source `path` and `line` metadata.
+- Manufacturing release wizard with MCP pre-flight gate inspection and structured error hints.
+- JSON schema validation for `.vscode/mcp.json` and a redacted MCP traffic log viewer.
 
 ## Feature Highlights
 
@@ -35,6 +36,7 @@ KiCad Studio turns VS Code into a practical KiCad workspace: view schematics and
 - DRC/ERC diagnostics mapped into the VS Code Problems panel.
 - Fabrication and documentation exports including Gerber, drill, IPC-2581, ODB++, DXF, GenCAD, IPC-D-356, BOM, netlist, 3D GLB/BREP/PLY, and 3D PDF.
 - Variants, DRC rules, and AI fix queue sidebars for KiCad 10-era workflows.
+- MCP Quality Gates sidebar for release-readiness review when `kicad-mcp-pro` is connected.
 - Optional AI providers: Claude, OpenAI, GitHub Copilot, and Gemini.
 - Agent-mode Language Model Tools for DRC/ERC, Gerber export, file opening, component search, library search, active-context reads, and variant switching.
 - Optional Claude-backed Language Model Chat Provider registration for compatible VS Code builds.
@@ -65,12 +67,23 @@ KiCad Studio turns VS Code into a practical KiCad workspace: view schematics and
 ### `kicad-mcp-pro` Integration
 
 - Auto-detects `kicad-mcp-pro` from `uvx`, a global executable, `pip`, or `pipx`.
+- Installs `kicad-mcp-pro` from VS Code Tasks when `uvx`, `pipx`, or `pip` is available.
 - Offers to create `.vscode/mcp.json` in the active workspace.
+- Validates `.vscode/mcp.json` with KiCad-aware schema completions.
 - Registers `kicad-mcp-pro` as an MCP server definition when the host VS Code build supports the API.
+- Negotiates the server version and reports connected, older-than-recommended, incompatible, disconnected, or not-installed states in a single MCP status entry.
 - Uses Streamable HTTP-compatible requests for the extension-side MCP client and reuses `MCP-Session-Id` values when provided by the server.
 - Pushes active file, DRC summary, selection context, cursor position, visible layer set, and active variant to MCP.
 - Surfaces `kicad://project/fix_queue` as the `AI Fix Queue` view.
+- Surfaces `project_quality_gate_report`, placement, transfer, and manufacturing gate results in the `Quality Gates` view.
+- Shows redacted recent MCP request/response traffic through `KiCad: Open MCP Log`.
 - Lets users edit project design intent from a dedicated webview form.
+
+![Quality Gates sidebar](assets/screenshots/quality-gates.png)
+
+#### Compatibility
+
+KiCad Studio 2.6.0 supports `kicad-mcp-pro >=3.0.0 <4.0.0` and recommends `>=3.0.2 <4.0.0`. The extension was tested against `kicad-mcp-pro 3.0.2`. If a connected server reports a version outside the required range, MCP-dependent commands are disabled and KiCad-only viewers, exports, checks, BOM/netlist, language services, and library features continue to work.
 
 See [docs/INTEGRATION.md](docs/INTEGRATION.md) for the detailed MCP workflow.
 
@@ -81,8 +94,9 @@ See [docs/INTEGRATION.md](docs/INTEGRATION.md) for the detailed MCP workflow.
 3. Open a folder containing a `.kicad_pro`, `.kicad_sch`, or `.kicad_pcb` file.
 4. Run `KiCad: Detect kicad-cli` once to validate your local KiCad installation.
 5. Open a schematic or PCB file to use the viewer, project tree, BOM, netlist, and export commands.
-6. Optionally run `KiCad: Setup MCP Integration` if `kicad-mcp-pro` is installed locally.
-7. If you want KiCad Studio to appear as a chat-model vendor, run `KiCad: Manage Chat Provider` and store a Claude API key.
+6. Optionally run `KiCad: Install kicad-mcp-pro`, then `KiCad: Setup MCP Integration`.
+7. Pick a focused MCP profile with `KiCad: Pick MCP Profile` if the default `full` profile is broader than the current workflow.
+8. If you want KiCad Studio to appear as a chat-model vendor, run `KiCad: Manage Chat Provider` and store a Claude API key.
 
 ## Installation
 
@@ -107,6 +121,11 @@ If detection fails, set `kicadstudio.kicadCliPath` manually. More detail lives i
 - `KiCad: Run Electrical Rule Check (ERC)`
 - `KiCad: Export 3D PDF`
 - `KiCad: Setup MCP Integration`
+- `KiCad: Install kicad-mcp-pro`
+- `KiCad: Pick MCP Profile`
+- `KiCad: Run All Quality Gates`
+- `KiCad: Manufacturing Release Wizard`
+- `KiCad: Open MCP Log`
 - `KiCad: Open Design Intent`
 - `KiCad: Open AI Chat`
 - `KiCad: Manage Chat Provider`
@@ -141,6 +160,8 @@ Important settings include:
 - `kicadstudio.mcp.endpoint`
 - `kicadstudio.mcp.allowLegacySse`
 - `kicadstudio.mcp.pushContext`
+- `kicadstudio.mcp.profile`
+- `kicadstudio.mcp.logSize`
 - `kicadstudio.viewer.largeFileThresholdBytes`
 - `kicadstudio.viewer.syncThemeWithVscode`
 - `kicadstudio.viewer.enableLayerPanel`

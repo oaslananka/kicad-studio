@@ -9,6 +9,7 @@ export const NETLIST_VIEW_ID = 'kicadstudio.netlistView';
 export const VARIANTS_VIEW_ID = 'kicadstudio.variants';
 export const FIX_QUEUE_VIEW_ID = 'kicadstudio.fixQueue';
 export const DRC_RULES_VIEW_ID = 'kicadstudio.drcRules';
+export const QUALITY_GATE_VIEW_ID = 'kicadstudio.qualityGate';
 export const KICAD_EXPORT_PRESETS_FILE = 'kicad-export-presets.json';
 export const SCHEMATIC_EDITOR_VIEW_TYPE = 'kicadstudio.schematicViewer';
 export const PCB_EDITOR_VIEW_TYPE = 'kicadstudio.pcbViewer';
@@ -99,9 +100,23 @@ export const COMMANDS = {
   manageChatProvider: 'kicadstudio.manageChatProvider',
   export3DPdf: 'kicadstudio.export3DPdf',
   setupMcpIntegration: 'kicadstudio.setupMcpIntegration',
+  installMcp: 'kicadstudio.mcp.install',
+  retryMcp: 'kicadstudio.mcp.retry',
+  openMcpUpgradeGuide: 'kicadstudio.mcp.openUpgradeGuide',
+  pickMcpProfile: 'kicadstudio.mcp.pickProfile',
+  openMcpLog: 'kicadstudio.mcp.openLog',
+  saveMcpLog: 'kicadstudio.mcp.saveLog',
+  clearMcpLog: 'kicadstudio.mcp.clearLog',
   openDesignIntent: 'kicadstudio.openDesignIntent',
   refreshFixQueue: 'kicadstudio.refreshFixQueue',
   applyFixQueueItem: 'kicadstudio.applyFixQueueItem',
+  applyFixQueueById: 'kicadstudio.fixQueue.apply',
+  applyAllFixQueueItems: 'kicadstudio.fixQueue.applyAll',
+  qualityGateRunAll: 'kicadstudio.qualityGate.runAll',
+  qualityGateRunThis: 'kicadstudio.qualityGate.runThis',
+  qualityGateShowRaw: 'kicadstudio.qualityGate.showRaw',
+  qualityGateOpenDocs: 'kicadstudio.qualityGate.openDocs',
+  manufacturingRelease: 'kicadstudio.manufacturing.release',
   createVariant: 'kicadstudio.variant.create',
   setActiveVariant: 'kicadstudio.variant.setActive',
   diffVariantBom: 'kicadstudio.variant.diffBom',
@@ -127,6 +142,10 @@ export const CONTEXT_KEYS = {
   kicad10Plus: 'kicadstudio.kicad10Plus',
   mcpAvailable: 'kicadstudio.mcpAvailable',
   mcpConnected: 'kicadstudio.mcpConnected',
+  mcpCompatible: 'kicadstudio.mcpCompatible',
+  mcpIncompatible: 'kicadstudio.mcpIncompatible',
+  mcpDisconnected: 'kicadstudio.mcpDisconnected',
+  mcpProfile: 'kicadstudio.mcpProfile',
   hasVariants: 'kicadstudio.hasVariants',
   workspaceTrusted: 'kicadstudio.workspaceTrusted'
 } as const;
@@ -159,6 +178,8 @@ export const SETTINGS = {
   mcpEndpoint: 'kicadstudio.mcp.endpoint',
   mcpAllowLegacySse: 'kicadstudio.mcp.allowLegacySse',
   mcpPushContext: 'kicadstudio.mcp.pushContext',
+  mcpProfile: 'kicadstudio.mcp.profile',
+  mcpLogSize: 'kicadstudio.mcp.logSize',
   viewerSyncTheme: 'kicadstudio.viewer.syncThemeWithVscode',
   viewerEnableLayerPanel: 'kicadstudio.viewer.enableLayerPanel',
   viewerEnableSnapshotExport: 'kicadstudio.viewer.enableSnapshotExport',

@@ -5,6 +5,17 @@ function createJsonResponse(
   body: unknown,
   init?: { status?: number; headers?: Record<string, string> }
 ) {
+  const normalizedBody =
+    (init?.status ?? 200) >= 200 &&
+    (init?.status ?? 200) < 300 &&
+    isEmptyResult(body)
+      ? {
+          result: {
+            serverInfo: { version: '3.0.2' },
+            capabilities: { tools: [], resources: [], prompts: [] }
+          }
+        }
+      : body;
   return {
     ok: (init?.status ?? 200) >= 200 && (init?.status ?? 200) < 300,
     status: init?.status ?? 200,
@@ -12,7 +23,7 @@ function createJsonResponse(
       'content-type': 'application/json',
       ...(init?.headers ?? {})
     }),
-    json: async () => body
+    json: async () => normalizedBody
   };
 }
 
@@ -29,6 +40,18 @@ function createSseResponse(
     }),
     text: async () => payload
   };
+}
+
+function isEmptyResult(body: unknown): boolean {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'result' in body &&
+    typeof (body as { result?: unknown }).result === 'object' &&
+    (body as { result?: unknown }).result !== null &&
+    Object.keys((body as { result: Record<string, unknown> }).result).length ===
+      0
+  );
 }
 
 describe('McpClient', () => {

@@ -30,6 +30,7 @@ export function registerCheckCommands(
             diagnostics: result.diagnostics,
             summary: result.summary
           });
+          services.qualityGateProvider.scheduleDrcRefresh();
           void services.fixQueueProvider.refresh().catch(() => undefined);
           if (result.diagnostics.length > 0) {
             await vscode.commands.executeCommand(

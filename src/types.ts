@@ -281,16 +281,95 @@ export interface KiCadVariant {
 
 export interface McpInstallStatus {
   found: boolean;
-  command?: 'uvx' | 'kicad-mcp-pro' | 'docker' | 'npx' | undefined;
+  command?:
+    | 'uvx'
+    | 'kicad-mcp-pro'
+    | 'docker'
+    | 'npx'
+    | 'pipx'
+    | 'pip'
+    | undefined;
   version?: string | undefined;
   source?:
     | 'uvx'
     | 'global'
     | 'pip'
+    | 'pipx'
     | 'docker'
     | 'inspector'
     | 'none'
     | undefined;
+}
+
+export type McpCompatStatus = 'ok' | 'warn' | 'incompatible';
+
+export type McpConnectionKind =
+  | 'NotInstalled'
+  | 'Disconnected'
+  | 'Connecting'
+  | 'Connected'
+  | 'Incompatible';
+
+export interface McpCapabilityCard {
+  tools: string[];
+  resources: string[];
+  prompts: string[];
+}
+
+export interface McpServerCard {
+  version: string;
+  capabilities: McpCapabilityCard;
+  compat: McpCompatStatus;
+  capturedAt: string;
+}
+
+export interface McpConnectionState {
+  kind: McpConnectionKind;
+  available: boolean;
+  connected: boolean;
+  install?: McpInstallStatus | undefined;
+  server?: McpServerCard | undefined;
+  message?: string | undefined;
+}
+
+export interface StructuredMcpError {
+  code: string;
+  message: string;
+  hint?: string | undefined;
+}
+
+export interface McpLogEntry {
+  id: number;
+  timestamp: string;
+  direction: 'request' | 'response' | 'error';
+  method: string;
+  summary: string;
+  payload: string;
+}
+
+export type QualityGateStatus =
+  | 'PASS'
+  | 'WARN'
+  | 'FAIL'
+  | 'BLOCKED'
+  | 'PENDING';
+
+export interface QualityGateViolation {
+  message: string;
+  path?: string | undefined;
+  line?: number | undefined;
+  hint?: string | undefined;
+}
+
+export interface QualityGateResult {
+  id: string;
+  label: string;
+  status: QualityGateStatus;
+  summary: string;
+  details: string[];
+  violations: QualityGateViolation[];
+  lastRun?: string | undefined;
+  raw?: string | undefined;
 }
 
 export interface StudioContext {
@@ -321,10 +400,14 @@ export interface StudioContext {
 
 export interface FixItem {
   id: string;
+  title?: string | undefined;
   description: string;
   severity: 'error' | 'warning' | 'info';
   tool: string;
   args: Record<string, unknown>;
   status: 'pending' | 'applying' | 'done' | 'failed';
   preview?: string | undefined;
+  path?: string | undefined;
+  line?: number | undefined;
+  confidence?: number | undefined;
 }

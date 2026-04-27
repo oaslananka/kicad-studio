@@ -2,7 +2,7 @@
   "name": "kicadstudio",
   "displayName": "KiCad Studio",
   "description": "The complete KiCad development environment for VS Code — view schematics & PCBs, run DRC/ERC, export production files, search components, and get AI-powered design assistance.",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "publisher": "oaslananka",
   "engines": {
     "vscode": "^1.95.0",
@@ -186,6 +186,12 @@
           "*.kicad_pro"
         ],
         "url": "./schemas/kicad-project.schema.json"
+      },
+      {
+        "fileMatch": [
+          "**/.vscode/mcp.json"
+        ],
+        "url": "./schemas/vscode-mcp.kicad.json"
       }
     ],
     "customEditors": [
@@ -251,6 +257,12 @@
           "icon": "assets/icon-dark.png"
         },
         {
+          "id": "kicadstudio.qualityGate",
+          "name": "Quality Gates",
+          "when": "kicadstudio.mcpConnected && kicadstudio.hasProject",
+          "icon": "assets/icon-dark.png"
+        },
+        {
           "id": "kicadstudio.drcRules",
           "name": "DRC Rules",
           "when": "kicadstudio.hasProject",
@@ -278,6 +290,10 @@
       {
         "view": "kicadstudio.fixQueue",
         "contents": "Connect `kicad-mcp-pro` to see actionable AI fixes here."
+      },
+      {
+        "view": "kicadstudio.qualityGate",
+        "contents": "Connect `kicad-mcp-pro` and run quality gates to inspect release readiness."
       },
       {
         "view": "kicadstudio.drcRules",
@@ -538,6 +554,41 @@
         "category": "KiCad Setup"
       },
       {
+        "command": "kicadstudio.mcp.install",
+        "title": "KiCad: Install kicad-mcp-pro",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.mcp.retry",
+        "title": "KiCad: Retry MCP Connection",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.mcp.openUpgradeGuide",
+        "title": "KiCad: Open MCP Upgrade Guide",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.mcp.pickProfile",
+        "title": "KiCad: Pick MCP Profile",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.mcp.openLog",
+        "title": "KiCad: Open MCP Log",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.mcp.saveLog",
+        "title": "KiCad: Save MCP Log",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.mcp.clearLog",
+        "title": "KiCad: Clear MCP Log",
+        "category": "KiCad"
+      },
+      {
         "command": "kicadstudio.openDesignIntent",
         "title": "KiCad: Open Design Intent",
         "category": "KiCad MCP"
@@ -552,6 +603,42 @@
         "command": "kicadstudio.applyFixQueueItem",
         "title": "KiCad: Apply AI Fix",
         "category": "KiCad MCP"
+      },
+      {
+        "command": "kicadstudio.fixQueue.apply",
+        "title": "KiCad: Apply Fix Queue Item",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.fixQueue.applyAll",
+        "title": "KiCad: Apply All Fix Queue Items",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.qualityGate.runAll",
+        "title": "KiCad: Run All Quality Gates",
+        "category": "KiCad",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "kicadstudio.qualityGate.runThis",
+        "title": "KiCad: Run This Quality Gate",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.qualityGate.showRaw",
+        "title": "KiCad: Show Quality Gate Raw Output",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.qualityGate.openDocs",
+        "title": "KiCad: Open Quality Gate Documentation",
+        "category": "KiCad"
+      },
+      {
+        "command": "kicadstudio.manufacturing.release",
+        "title": "KiCad: Manufacturing Release Wizard",
+        "category": "KiCad"
       },
       {
         "command": "kicadstudio.variant.create",
@@ -679,6 +766,21 @@
           "group": "navigation"
         },
         {
+          "when": "view == kicadstudio.fixQueue",
+          "command": "kicadstudio.fixQueue.applyAll",
+          "group": "navigation"
+        },
+        {
+          "when": "view == kicadstudio.qualityGate",
+          "command": "kicadstudio.qualityGate.runAll",
+          "group": "navigation"
+        },
+        {
+          "when": "view == kicadstudio.qualityGate",
+          "command": "kicadstudio.qualityGate.openDocs",
+          "group": "navigation"
+        },
+        {
           "when": "view == kicadstudio.drcRules",
           "command": "kicadstudio.drcRule.addWithMcp",
           "group": "navigation"
@@ -771,6 +873,34 @@
         },
         {
           "command": "kicadstudio.setupMcpIntegration"
+        },
+        {
+          "command": "kicadstudio.mcp.install",
+          "when": "kicadstudio.workspaceTrusted"
+        },
+        {
+          "command": "kicadstudio.mcp.retry"
+        },
+        {
+          "command": "kicadstudio.mcp.pickProfile",
+          "when": "kicadstudio.workspaceTrusted"
+        },
+        {
+          "command": "kicadstudio.mcp.openLog"
+        },
+        {
+          "command": "kicadstudio.mcp.saveLog"
+        },
+        {
+          "command": "kicadstudio.mcp.clearLog"
+        },
+        {
+          "command": "kicadstudio.qualityGate.runAll",
+          "when": "kicadstudio.mcpConnected && kicadstudio.hasProject"
+        },
+        {
+          "command": "kicadstudio.manufacturing.release",
+          "when": "kicadstudio.mcpConnected && kicadstudio.hasProject && kicadstudio.workspaceTrusted"
         },
         {
           "command": "kicadstudio.showStoredSecrets"
@@ -1053,6 +1183,30 @@
           "default": true,
           "description": "Push active file, DRC summary, and lasso selection context to kicad-mcp-pro."
         },
+        "kicadstudio.mcp.profile": {
+          "type": "string",
+          "default": "full",
+          "enum": [
+            "full",
+            "minimal",
+            "schematic_only",
+            "pcb_only",
+            "manufacturing",
+            "high_speed",
+            "power",
+            "simulation",
+            "analysis",
+            "agent_full"
+          ],
+          "description": "Preferred kicad-mcp-pro profile when no workspace .vscode/mcp.json overrides it."
+        },
+        "kicadstudio.mcp.logSize": {
+          "type": "number",
+          "default": 200,
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Number of recent MCP request/response log entries retained in memory."
+        },
         "kicadstudio.exportPresets": {
           "type": "array",
           "default": [],
@@ -1186,6 +1340,68 @@
             },
             "completionEvents": [
               "onCommand:kicadstudio.exportManufacturingPackage"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "kicadstudio.mcpQuickstart",
+        "title": "MCP-assisted KiCad release",
+        "description": "Install kicad-mcp-pro, choose a focused profile, run quality gates, and prepare a gated release.",
+        "steps": [
+          {
+            "id": "kicadstudio.mcpQuickstart.install",
+            "title": "Install kicad-mcp-pro",
+            "description": "Install the optional MCP server for AI-assisted KiCad review and release workflows.\n[Install kicad-mcp-pro](command:kicadstudio.mcp.install)",
+            "media": {
+              "markdown": "media/walkthroughs/mcp-install.md"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.mcp.install"
+            ]
+          },
+          {
+            "id": "kicadstudio.mcpQuickstart.configure",
+            "title": "Generate .vscode/mcp.json",
+            "description": "Create a workspace MCP configuration once kicad-mcp-pro is available.\n[Setup MCP Integration](command:kicadstudio.setupMcpIntegration)",
+            "media": {
+              "markdown": "media/walkthroughs/mcp-configure.md"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.setupMcpIntegration"
+            ]
+          },
+          {
+            "id": "kicadstudio.mcpQuickstart.profile",
+            "title": "Pick a profile",
+            "description": "Select the smallest MCP profile that fits this project.\n[Pick MCP Profile](command:kicadstudio.mcp.pickProfile)",
+            "media": {
+              "markdown": "media/walkthroughs/mcp-profile.md"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.mcp.pickProfile"
+            ]
+          },
+          {
+            "id": "kicadstudio.mcpQuickstart.gates",
+            "title": "Run quality gates",
+            "description": "Open the Quality Gates view and run the current project checks.\n[Run All Quality Gates](command:kicadstudio.qualityGate.runAll)",
+            "media": {
+              "markdown": "media/walkthroughs/mcp-quality-gates.md"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.qualityGate.runAll"
+            ]
+          },
+          {
+            "id": "kicadstudio.mcpQuickstart.release",
+            "title": "Release a board",
+            "description": "Use the manufacturing release wizard after the quality gates are clean.\n[Open Release Wizard](command:kicadstudio.manufacturing.release)",
+            "media": {
+              "markdown": "media/walkthroughs/mcp-release.md"
+            },
+            "completionEvents": [
+              "onCommand:kicadstudio.manufacturing.release"
             ]
           }
         ]
@@ -1474,6 +1690,7 @@
     "test:unit": "jest --runInBand",
     "test:unit:coverage": "jest --runInBand --coverage",
     "test:integration": "npm run compile-tests && node ./out/test/runTest.js",
+    "test:integration:real": "npm run compile-tests && node ./out/test/integration/realServer/quickstart.flow.test.js && node ./out/test/integration/realServer/qualityGate.flow.test.js && node ./out/test/integration/realServer/contextBridge.flow.test.js",
     "test:e2e": "playwright test test/e2e/",
     "check:bundle-size": "node scripts/check-bundle-size.js",
     "bundle-kicanvas": "node scripts/bundle-kicanvas.js",
@@ -1524,7 +1741,8 @@
     "webpack-cli": "^7.0.2"
   },
   "dependencies": {
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "semver": "^7.7.4"
   },
   "lint-staged": {
     "*.{js,cjs,mjs,ts}": [

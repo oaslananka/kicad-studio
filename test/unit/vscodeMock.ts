@@ -78,7 +78,8 @@ export const workspace = {
   }),
   fs: {
     readFile: jest.fn(),
-    stat: jest.fn()
+    stat: jest.fn(),
+    writeFile: jest.fn()
   },
   onDidSaveTextDocument: jest.fn(() => createDisposable()),
   onDidChangeTextDocument: jest.fn(() => createDisposable()),
@@ -101,6 +102,7 @@ export const window = {
   showErrorMessage: jest.fn(),
   showQuickPick: jest.fn(),
   showInputBox: jest.fn(),
+  showSaveDialog: jest.fn(),
   showTextDocument: jest.fn(),
   withProgress: jest.fn(async (_options, task) =>
     task({ report: jest.fn() }, { onCancellationRequested: jest.fn() })
@@ -159,7 +161,8 @@ export const languages = {
       diagnosticStore.delete(uri.toString());
     }),
     dispose: jest.fn()
-  }))
+  })),
+  registerCodeActionsProvider: jest.fn(() => createDisposable())
 };
 
 export const commands = {
@@ -174,7 +177,8 @@ export const lm = {
 };
 
 export const tasks = {
-  registerTaskProvider: jest.fn(() => createDisposable())
+  registerTaskProvider: jest.fn(() => createDisposable()),
+  executeTask: jest.fn()
 };
 
 export const env = {
@@ -216,6 +220,23 @@ export const SymbolKind = {
 
 export const CompletionItemKind = {
   Keyword: 14
+};
+
+export const CodeActionKind = {
+  QuickFix: {
+    value: 'quickfix',
+    append(segment: string) {
+      return {
+        value: `quickfix.${segment}`,
+        append(next: string) {
+          return {
+            value: `quickfix.${segment}.${next}`,
+            append: this.append
+          };
+        }
+      };
+    }
+  }
 };
 
 export const TaskScope = {
@@ -271,7 +292,10 @@ export class Selection extends Range {
 }
 
 export class Uri {
-  constructor(public readonly fsPath: string) {}
+  constructor(
+    public readonly fsPath: string,
+    public readonly fragment = ''
+  ) {}
 
   static file(fsPath: string): Uri {
     return new Uri(fsPath);
@@ -285,8 +309,12 @@ export class Uri {
     return new Uri(value);
   }
 
+  with(change: { fragment?: string }): Uri {
+    return new Uri(this.fsPath, change.fragment ?? this.fragment);
+  }
+
   toString(): string {
-    return this.fsPath;
+    return this.fragment ? `${this.fsPath}#${this.fragment}` : this.fsPath;
   }
 }
 
@@ -337,6 +365,16 @@ export class CompletionItem {
   constructor(
     public readonly label: string,
     public readonly kind: number
+  ) {}
+}
+
+export class CodeAction {
+  command?: unknown;
+  isPreferred?: boolean;
+
+  constructor(
+    public readonly title: string,
+    public readonly kind: unknown
   ) {}
 }
 

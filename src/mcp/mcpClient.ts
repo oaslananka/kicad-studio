@@ -2,17 +2,25 @@ import * as vscode from 'vscode';
 import { SETTINGS } from '../constants';
 import type {
   FixItem,
+  McpCapabilityCard,
+  McpConnectionState,
   McpInstallStatus,
+  McpServerCard,
   McpToolCall,
+  QualityGateResult,
+  StructuredMcpError,
   StudioContext
 } from '../types';
 import { Logger } from '../utils/logger';
+import { MCP_COMPAT, getMcpCompatStatus, normalizeMcpVersion } from './compat';
 import { McpDetector } from './mcpDetector';
+import type { McpLogger } from './mcpLogger';
 
 interface JsonRpcResponse<T> {
   result?: T;
   error?: {
     message?: string;
+    data?: unknown;
   };
 }
 
@@ -24,15 +32,15 @@ interface RpcTransportResult<T> {
 export interface McpClientOptions {
   maxRetries?: number | undefined;
   retryBaseDelayMs?: number | undefined;
-}
-
-export interface McpConnectionState {
-  available: boolean;
-  connected: boolean;
-  install?: McpInstallStatus | undefined;
+  reconnectDelaysMs?: readonly number[] | undefined;
+  logger?: McpLogger | undefined;
 }
 
 const MCP_SESSION_ID_KEY = 'kicadstudio.mcp.sessionId';
+const MCP_LAST_SERVER_CARD_KEY = 'kicadstudio.mcp.lastServerCard';
+const DEFAULT_RECONNECT_DELAYS_MS = [
+  1000, 2000, 4000, 8000, 16000, 30000
+] as const;
 
 class McpHttpError extends Error {
   constructor(readonly status: number) {
@@ -47,6 +55,11 @@ export class McpClient {
   private nextRpcId = 1;
   private readonly maxRetries: number;
   private readonly retryBaseDelayMs: number;
+  private readonly reconnectDelaysMs: readonly number[];
+  private readonly trafficLogger: McpLogger | undefined;
+  private state: McpConnectionState;
+  private incompatibleWarningLogged = false;
+  private reconnectTimers: NodeJS.Timeout[] = [];
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -57,6 +70,24 @@ export class McpClient {
     this.sessionId = context.globalState.get<string>(MCP_SESSION_ID_KEY);
     this.maxRetries = Math.max(1, options.maxRetries ?? 3);
     this.retryBaseDelayMs = Math.max(1, options.retryBaseDelayMs ?? 200);
+    this.reconnectDelaysMs =
+      options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
+    this.trafficLogger = options.logger;
+    const cachedServer = context.globalState.get<McpServerCard>(
+      MCP_LAST_SERVER_CARD_KEY
+    );
+    this.state = cachedServer
+      ? {
+          kind:
+            cachedServer.compat === 'incompatible'
+              ? 'Incompatible'
+              : 'Disconnected',
+          available: false,
+          connected: false,
+          server: cachedServer,
+          message: 'Using cached MCP server metadata while reconnecting.'
+        }
+      : { kind: 'Disconnected', available: false, connected: false };
   }
 
   async detectInstall(): Promise<McpInstallStatus> {
@@ -64,33 +95,56 @@ export class McpClient {
     return this.lastInstall;
   }
 
+  getState(): McpConnectionState {
+    return cloneConnectionState(this.state);
+  }
+
+  getLastServerCard(): McpServerCard | undefined {
+    return this.state.server ? { ...this.state.server } : undefined;
+  }
+
   async testConnection(): Promise<McpConnectionState> {
     const install = await this.detectInstall();
     const endpoint = this.getEndpoint();
     if (!endpoint) {
-      return {
+      return this.setState({
+        kind: install.found ? 'Disconnected' : 'NotInstalled',
         available: install.found,
         connected: false,
         install
-      };
+      });
     }
 
     try {
+      await this.ensureInitialized({ force: true });
+      if (this.state.kind === 'Incompatible') {
+        return this.setState({
+          ...this.state,
+          available: install.found,
+          connected: false,
+          install
+        });
+      }
       await this.rpc('tools/list', {});
-      return {
+      return this.setState({
+        kind: 'Connected',
         available: install.found,
         connected: true,
-        install
-      };
+        install,
+        server: this.state.server
+      });
     } catch (error) {
       this.logger.debug(
         `MCP connection test failed: ${error instanceof Error ? error.message : String(error)}`
       );
-      return {
+      return this.setState({
+        kind: install.found ? 'Disconnected' : 'NotInstalled',
         available: install.found,
         connected: false,
-        install
-      };
+        install,
+        server: this.state.server,
+        message: error instanceof Error ? error.message : String(error)
+      });
     }
   }
 
@@ -125,6 +179,11 @@ export class McpClient {
       name,
       arguments: args
     });
+
+    const structuredError = normalizeStructuredError(result?.structuredContent);
+    if (structuredError) {
+      throw new McpStructuredError(structuredError);
+    }
 
     if (
       result?.structuredContent &&
@@ -206,6 +265,50 @@ export class McpClient {
     return fixItems.map((item, index) => normalizeFixItem(item, index));
   }
 
+  async runProjectQualityGate(): Promise<QualityGateResult[]> {
+    const result = await this.callTool('project_quality_gate_report', {});
+    return normalizeProjectGateResults(result);
+  }
+
+  async runPlacementQualityGate(): Promise<QualityGateResult> {
+    const result =
+      (await this.callTool('pcb_placement_quality_report', {})) ??
+      (await this.callTool('pcb_placement_quality_gate', {})) ??
+      {};
+    return normalizeSingleGate('placement', 'Placement', result);
+  }
+
+  async runTransferQualityGate(): Promise<QualityGateResult> {
+    const result = await this.callTool('pcb_transfer_quality_gate', {});
+    return normalizeSingleGate('transfer', 'PCB Transfer', result ?? {});
+  }
+
+  async runManufacturingQualityGate(): Promise<QualityGateResult> {
+    const result = await this.callTool('manufacturing_quality_gate', {});
+    return normalizeSingleGate('manufacturing', 'Manufacturing', result ?? {});
+  }
+
+  async exportManufacturingPackage(
+    variant: string | undefined
+  ): Promise<Record<string, unknown> | undefined> {
+    return this.callTool('export_manufacturing_package', {
+      ...(variant ? { variant } : {})
+    });
+  }
+
+  retryNow(): Promise<McpConnectionState> {
+    this.clearReconnectTimers();
+    return this.testConnection();
+  }
+
+  async deactivate(timeoutMs = 2000): Promise<void> {
+    this.clearReconnectTimers();
+    await Promise.race([
+      Promise.resolve(),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs))
+    ]);
+  }
+
   private getEndpoint(): string {
     return vscode.workspace
       .getConfiguration()
@@ -219,6 +322,11 @@ export class McpClient {
   ): Promise<T | undefined> {
     if (method !== 'initialize') {
       await this.ensureInitialized();
+      if (this.state.kind === 'Incompatible') {
+        throw new Error(
+          `MCP server is incompatible. Server ${this.state.server?.version ?? '0.0.0'} does not satisfy ${MCP_COMPAT.required}.`
+        );
+      }
     }
 
     const { json, sessionId } = await this.postJsonRpcWithRetry<T>(
@@ -229,13 +337,15 @@ export class McpClient {
       await this.persistSessionId(sessionId);
     }
     if (json.error) {
-      throw new Error(json.error.message ?? 'Unknown MCP error');
+      throw createErrorFromRpc(json.error);
     }
     return json.result;
   }
 
-  private async ensureInitialized(): Promise<void> {
-    if (this.sessionId) {
+  private async ensureInitialized(
+    options: { force?: boolean } = {}
+  ): Promise<void> {
+    if (!options.force && this.sessionId && this.state.server) {
       return;
     }
     if (this.initializePromise) {
@@ -243,17 +353,27 @@ export class McpClient {
     }
 
     this.initializePromise = (async () => {
-      const { sessionId } = await this.postJsonRpcWithRetry('initialize', {
-        protocolVersion: '2024-11-05',
-        clientInfo: {
-          name: 'kicad-studio',
-          version: '2.4.0-dev'
-        },
-        capabilities: {}
+      this.setState({
+        ...this.state,
+        kind: 'Connecting',
+        connected: false
       });
+      const { json, sessionId } =
+        await this.postJsonRpcWithRetry<InitializeResult>('initialize', {
+          protocolVersion: '2024-11-05',
+          clientInfo: {
+            name: 'kicad-studio',
+            version: '2.6.0'
+          },
+          capabilities: {}
+        });
       if (sessionId) {
         await this.persistSessionId(sessionId);
       }
+      if (json.error) {
+        throw createErrorFromRpc(json.error);
+      }
+      await this.captureServerCard(json.result);
     })();
 
     try {
@@ -275,6 +395,7 @@ export class McpClient {
       method,
       params
     });
+    this.trafficLogger?.recordRequest(method, requestBody, this.buildHeaders());
 
     const primaryResponse = await fetch(primaryEndpoint, {
       method: 'POST',
@@ -295,16 +416,20 @@ export class McpClient {
       this.logger.warn(
         'Falling back to legacy MCP /sse transport because allowLegacySse is enabled.'
       );
-      return this.readRpcResponse<T>(
+      const fallback = await this.readRpcResponse<T>(
         await fetch(`${baseEndpoint}/sse`, {
           method: 'POST',
           headers: this.buildHeaders(),
           body: requestBody
         })
       );
+      this.trafficLogger?.recordResponse(method, fallback.json);
+      return fallback;
     }
 
-    return this.readRpcResponse<T>(primaryResponse);
+    const result = await this.readRpcResponse<T>(primaryResponse);
+    this.trafficLogger?.recordResponse(method, result.json);
+    return result;
   }
 
   private async postJsonRpcWithRetry<T>(
@@ -317,9 +442,18 @@ export class McpClient {
         return await this.postJsonRpc<T>(method, params);
       } catch (error) {
         lastError = error;
+        this.trafficLogger?.recordError(
+          method,
+          error instanceof Error ? error.message : String(error)
+        );
         if (attempt === this.maxRetries - 1 || !isTransientMcpError(error)) {
           throw error;
         }
+        this.logger.debug(
+          `MCP ${method} failed transiently; retrying in ${
+            this.retryBaseDelayMs * 2 ** attempt
+          }ms.`
+        );
         await sleep(this.retryBaseDelayMs * 2 ** attempt);
       }
     }
@@ -330,6 +464,105 @@ export class McpClient {
   private async persistSessionId(sessionId: string): Promise<void> {
     this.sessionId = sessionId;
     await this.context.globalState.update(MCP_SESSION_ID_KEY, sessionId);
+  }
+
+  private async captureServerCard(
+    initializeResult: InitializeResult | undefined
+  ): Promise<void> {
+    const initializeVersion = normalizeMcpVersion(
+      initializeResult?.serverInfo?.version
+    );
+    const metadataVersion =
+      getMcpCompatStatus(initializeVersion) === 'incompatible'
+        ? await this.readWellKnownServerVersion()
+        : undefined;
+    const version = metadataVersion ?? initializeVersion;
+    const compat = getMcpCompatStatus(version);
+    const card: McpServerCard = {
+      version,
+      capabilities: normalizeCapabilities(initializeResult?.capabilities),
+      compat,
+      capturedAt: new Date().toISOString()
+    };
+    await this.context.globalState.update(MCP_LAST_SERVER_CARD_KEY, card);
+
+    if (compat === 'incompatible') {
+      await this.context.globalState.update(MCP_SESSION_ID_KEY, undefined);
+      this.sessionId = undefined;
+      if (!this.incompatibleWarningLogged) {
+        this.incompatibleWarningLogged = true;
+        this.logger.warn(
+          `MCP Incompatible (server ${version}, need ${MCP_COMPAT.required})`
+        );
+        void Promise.resolve(
+          vscode.window.showWarningMessage(
+            `MCP Incompatible (server ${version}, need ${MCP_COMPAT.required})`,
+            'Open Upgrade Guide',
+            'Dismiss'
+          )
+        ).then((choice) => {
+          if (choice === 'Open Upgrade Guide') {
+            void vscode.commands.executeCommand(
+              'kicadstudio.mcp.openUpgradeGuide'
+            );
+          }
+        });
+      }
+      this.setState({
+        kind: 'Incompatible',
+        available: this.lastInstall.found,
+        connected: false,
+        install: this.lastInstall,
+        server: card,
+        message: `Server ${version} does not satisfy ${MCP_COMPAT.required}.`
+      });
+      return;
+    }
+
+    this.setState({
+      kind: 'Connected',
+      available: this.lastInstall.found,
+      connected: true,
+      install: this.lastInstall,
+      server: card
+    });
+  }
+
+  private async readWellKnownServerVersion(): Promise<string | undefined> {
+    for (const path of ['/.well-known/mcp-server', '/well-known/mcp-server']) {
+      try {
+        const response = await fetch(`${this.getEndpoint()}${path}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) {
+          continue;
+        }
+        const metadata = (await response.json()) as unknown;
+        const version = normalizeMcpVersion(readWellKnownVersion(metadata));
+        if (getMcpCompatStatus(version) !== 'incompatible') {
+          this.logger.debug(
+            `Using MCP server-card version ${version} from ${path}.`
+          );
+          return version;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return undefined;
+  }
+
+  private setState(state: McpConnectionState): McpConnectionState {
+    this.state = cloneConnectionState(state);
+    return this.getState();
+  }
+
+  private clearReconnectTimers(): void {
+    for (const timer of this.reconnectTimers) {
+      clearTimeout(timer);
+    }
+    this.reconnectTimers = [];
   }
 
   private buildHeaders(): Record<string, string> {
@@ -363,6 +596,27 @@ export class McpClient {
   }
 }
 
+interface InitializeResult {
+  serverInfo?:
+    | {
+        version?: string | undefined;
+      }
+    | undefined;
+  capabilities?: unknown;
+}
+
+class McpStructuredError extends Error {
+  readonly code: string;
+  readonly hint: string | undefined;
+
+  constructor(error: StructuredMcpError) {
+    super(error.message);
+    this.name = 'McpStructuredError';
+    this.code = error.code;
+    this.hint = error.hint;
+  }
+}
+
 function isTransientMcpError(error: unknown): boolean {
   if (error instanceof McpHttpError) {
     return error.status === 408 || error.status === 429 || error.status >= 500;
@@ -382,6 +636,12 @@ function normalizeFixItem(value: unknown, index: number): FixItem {
   const record = item as Record<string, unknown>;
   return {
     id: String(record['id'] ?? `fix-${index + 1}`),
+    title:
+      typeof record['title'] === 'string'
+        ? record['title']
+        : typeof record['description'] === 'string'
+          ? record['description']
+          : undefined,
     description: String(
       record['description'] ?? record['title'] ?? `Suggested fix ${index + 1}`
     ),
@@ -405,6 +665,16 @@ function normalizeFixItem(value: unknown, index: number): FixItem {
         : 'pending',
     ...(typeof record['preview'] === 'string'
       ? { preview: record['preview'] }
+      : {}),
+    ...(typeof record['path'] === 'string' ? { path: record['path'] } : {}),
+    ...(typeof record['line'] === 'number'
+      ? { line: record['line'] }
+      : typeof record['line'] === 'string' &&
+          Number.isFinite(Number(record['line']))
+        ? { line: Number(record['line']) }
+        : {}),
+    ...(typeof record['confidence'] === 'number'
+      ? { confidence: record['confidence'] }
       : {})
   };
 }
@@ -427,4 +697,191 @@ function parseSseJsonRpc<T>(payload: string): JsonRpcResponse<T> {
   }
 
   return JSON.parse(lastEvent) as JsonRpcResponse<T>;
+}
+
+function normalizeCapabilities(value: unknown): McpCapabilityCard {
+  const record = isRecord(value) ? value : {};
+  return {
+    tools: normalizeCapabilityNames(record['tools']),
+    resources: normalizeCapabilityNames(record['resources']),
+    prompts: normalizeCapabilityNames(record['prompts'])
+  };
+}
+
+function readWellKnownVersion(value: unknown): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const serverInfo = isRecord(value['serverInfo']) ? value['serverInfo'] : {};
+  const name = String(serverInfo['name'] ?? serverInfo['title'] ?? '');
+  if (!/kicad[- ]mcp[- ]pro/i.test(name)) {
+    return undefined;
+  }
+  return typeof serverInfo['version'] === 'string'
+    ? serverInfo['version']
+    : typeof value['version'] === 'string'
+      ? value['version']
+      : undefined;
+}
+
+function normalizeCapabilityNames(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) =>
+        typeof item === 'string'
+          ? item
+          : isRecord(item) && typeof item['name'] === 'string'
+            ? item['name']
+            : undefined
+      )
+      .filter((item): item is string => Boolean(item));
+  }
+  if (isRecord(value)) {
+    return Object.keys(value);
+  }
+  return [];
+}
+
+function cloneConnectionState(state: McpConnectionState): McpConnectionState {
+  return {
+    ...state,
+    install: state.install ? { ...state.install } : undefined,
+    server: state.server
+      ? {
+          ...state.server,
+          capabilities: {
+            tools: [...state.server.capabilities.tools],
+            resources: [...state.server.capabilities.resources],
+            prompts: [...state.server.capabilities.prompts]
+          }
+        }
+      : undefined
+  };
+}
+
+function normalizeProjectGateResults(
+  result: Record<string, unknown> | undefined
+): QualityGateResult[] {
+  const outcomes = Array.isArray(result?.['outcomes'])
+    ? result['outcomes']
+    : [];
+  if (!outcomes.length) {
+    return [normalizeSingleGate('project', 'Project Quality', result ?? {})];
+  }
+  return outcomes.map((outcome, index) => {
+    const record = isRecord(outcome) ? outcome : {};
+    const label = String(record['name'] ?? `Gate ${index + 1}`);
+    return normalizeSingleGate(gateIdFromLabel(label), label, record);
+  });
+}
+
+function normalizeSingleGate(
+  id: string,
+  label: string,
+  value: Record<string, unknown>
+): QualityGateResult {
+  const text = typeof value['text'] === 'string' ? value['text'] : undefined;
+  const details = Array.isArray(value['details'])
+    ? value['details'].map((item) => String(item))
+    : text
+      ? text.split(/\r?\n/).filter((line) => line.startsWith('- '))
+      : [];
+  const status = normalizeGateStatus(value['status'], details, text);
+  const summary =
+    typeof value['summary'] === 'string'
+      ? value['summary']
+      : (text
+          ?.split(/\r?\n/)
+          .find((line) => line.startsWith('- '))
+          ?.slice(2) ??
+        (status === 'PENDING' ? 'Run gate to populate results.' : label));
+  return {
+    id,
+    label,
+    status,
+    summary,
+    details,
+    violations: details
+      .filter((detail) => /(?:fail|blocked|warn)/i.test(detail))
+      .map((detail) => ({ message: detail.replace(/^-\s*/, '') })),
+    lastRun: new Date().toISOString(),
+    raw: text ?? JSON.stringify(value, null, 2)
+  };
+}
+
+function normalizeGateStatus(
+  value: unknown,
+  details: string[],
+  text: string | undefined
+): QualityGateResult['status'] {
+  if (value === 'PASS' || value === 'FAIL' || value === 'BLOCKED') {
+    if (
+      value === 'PASS' &&
+      (details.some((detail) => /warn/i.test(detail)) ||
+        /warn/i.test(text ?? ''))
+    ) {
+      return 'WARN';
+    }
+    return value;
+  }
+  const haystack = `${String(value ?? '')}\n${text ?? ''}`;
+  if (/blocked/i.test(haystack)) {
+    return 'BLOCKED';
+  }
+  if (/fail/i.test(haystack)) {
+    return 'FAIL';
+  }
+  if (/warn/i.test(haystack)) {
+    return 'WARN';
+  }
+  if (/pass/i.test(haystack)) {
+    return 'PASS';
+  }
+  return 'PENDING';
+}
+
+function gateIdFromLabel(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function createErrorFromRpc(error: {
+  message?: string | undefined;
+  data?: unknown;
+}): Error {
+  const structured = normalizeStructuredError(error.data);
+  if (structured) {
+    return new McpStructuredError(structured);
+  }
+  return new Error(error.message ?? 'Unknown MCP error');
+}
+
+function normalizeStructuredError(
+  value: unknown
+): StructuredMcpError | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const code =
+    typeof value['error_code'] === 'string'
+      ? value['error_code']
+      : typeof value['code'] === 'string'
+        ? value['code']
+        : undefined;
+  const message =
+    typeof value['message'] === 'string' ? value['message'] : undefined;
+  if (!code || !message) {
+    return undefined;
+  }
+  return {
+    code,
+    message,
+    hint: typeof value['hint'] === 'string' ? value['hint'] : undefined
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

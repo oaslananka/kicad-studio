@@ -4,6 +4,14 @@ import { execFile } from 'node:child_process';
 import * as vscode from 'vscode';
 import type { McpInstallStatus } from '../types';
 
+export interface McpInstallerCandidate {
+  id: 'uvx' | 'pipx' | 'pip';
+  label: string;
+  description: string;
+  command: string;
+  args: string[];
+}
+
 function runExecFile(
   command: string,
   args: string[],
@@ -75,9 +83,9 @@ export class McpDetector {
     if (pipxResult.found) {
       return {
         found: true,
-        command: 'kicad-mcp-pro',
+        command: 'pipx',
         version: pipxResult.version,
-        source: 'pip'
+        source: 'pipx'
       };
     }
 
@@ -162,6 +170,52 @@ export class McpDetector {
     void vscode.window.showInformationMessage(
       'kicad-mcp-pro was detected and .vscode/mcp.json was created. You can now use it from Claude Code, Cursor, or another MCP client.'
     );
+  }
+
+  async detectInstallers(): Promise<McpInstallerCandidate[]> {
+    const candidates: McpInstallerCandidate[] = [];
+    if (
+      (await run('uvx', ['--version'])).ok ||
+      (await run('uv', ['--version'])).ok
+    ) {
+      candidates.push({
+        id: 'uvx',
+        label: 'uv tool install kicad-mcp-pro',
+        description: 'Recommended isolated Python tool install',
+        command: 'uv',
+        args: ['tool', 'install', 'kicad-mcp-pro']
+      });
+    }
+    if ((await run('pipx', ['--version'])).ok) {
+      candidates.push({
+        id: 'pipx',
+        label: 'pipx install kicad-mcp-pro',
+        description: 'Install as an isolated Python app with pipx',
+        command: 'pipx',
+        args: ['install', 'kicad-mcp-pro']
+      });
+    }
+    for (const command of ['pip', 'pip3', 'python', 'python3']) {
+      const result = await run(
+        command,
+        command.startsWith('python')
+          ? ['-m', 'pip', '--version']
+          : ['--version']
+      );
+      if (result.ok) {
+        candidates.push({
+          id: 'pip',
+          label: `${command} install --user kicad-mcp-pro`,
+          description: 'Fallback user-site Python install',
+          command,
+          args: command.startsWith('python')
+            ? ['-m', 'pip', 'install', '--user', 'kicad-mcp-pro']
+            : ['install', '--user', 'kicad-mcp-pro']
+        });
+        break;
+      }
+    }
+    return candidates;
   }
 
   private async tryUvx(): Promise<{ found: boolean; version?: string }> {

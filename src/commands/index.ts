@@ -3,6 +3,8 @@ import { registerExportCommands } from './exportCommands';
 import { registerCheckCommands } from './checkCommands';
 import { registerAiCommands } from './aiCommands';
 import { registerMcpCommands } from './mcpCommands';
+import { registerMcpLogCommands } from './mcpLogCommands';
+import { registerQualityGateCommands } from './qualityGateCommands';
 import { registerSecretCommands } from './secretCommands';
 import { registerViewerCommands } from './viewerCommands';
 import type { CommandServices } from './types';
@@ -25,6 +27,8 @@ export function registerAllCommands(
     ...registerCheckCommands(services),
     ...registerAiCommands(extensionContext, services),
     ...registerMcpCommands(extensionContext, services),
+    ...registerMcpLogCommands(services),
+    ...registerQualityGateCommands(services),
     ...registerSecretCommands(services),
     ...registerViewerCommands(services)
   );

@@ -221,9 +221,9 @@ describe('McpDetector.generateMcpJson', () => {
 
     expect(result).toEqual({
       found: true,
-      command: 'kicad-mcp-pro',
+      command: 'pipx',
       version: '0.8.4',
-      source: 'pip'
+      source: 'pipx'
     });
   });
 
@@ -284,5 +284,58 @@ describe('McpDetector.generateMcpJson', () => {
         source: 'inspector'
       })
     );
+  });
+
+  it('discovers installer candidates in uvx, pipx, then pip order', async () => {
+    execFileMock.mockImplementation(
+      (
+        command: string,
+        _args: string[],
+        _opts: unknown,
+        callback: (err: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        if (['uvx', 'pipx', 'pip'].includes(command)) {
+          callback(null, `${command} version`, '');
+        } else {
+          callback(new Error('missing'), '', 'missing');
+        }
+      }
+    );
+
+    const candidates = await new McpDetector().detectInstallers();
+
+    expect(candidates.map((candidate) => candidate.id)).toEqual([
+      'uvx',
+      'pipx',
+      'pip'
+    ]);
+    expect(candidates[0]?.args).toEqual(['tool', 'install', 'kicad-mcp-pro']);
+  });
+
+  it('discovers python -m pip as installer fallback', async () => {
+    execFileMock.mockImplementation(
+      (
+        command: string,
+        _args: string[],
+        _opts: unknown,
+        callback: (err: Error | null, stdout: string, stderr: string) => void
+      ) => {
+        if (command === 'python') {
+          callback(null, 'pip 25', '');
+        } else {
+          callback(new Error('missing'), '', 'missing');
+        }
+      }
+    );
+
+    const candidates = await new McpDetector().detectInstallers();
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        id: 'pip',
+        command: 'python',
+        args: ['-m', 'pip', 'install', '--user', 'kicad-mcp-pro']
+      })
+    ]);
   });
 });

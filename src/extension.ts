@@ -25,6 +25,7 @@ import {
   DRC_RULES_VIEW_ID,
   EXTENSION_ID,
   FIX_QUEUE_VIEW_ID,
+  QUALITY_GATE_VIEW_ID,
   NETLIST_VIEW_ID,
   PCB_EDITOR_VIEW_TYPE,
   S_EXPRESSION_DOCUMENT_SELECTOR,
@@ -46,6 +47,7 @@ import { ContextBridge } from './mcp/contextBridge';
 import { McpClient } from './mcp/mcpClient';
 import { McpDetector } from './mcp/mcpDetector';
 import { FixQueueProvider } from './mcp/fixQueueProvider';
+import { McpLogger } from './mcp/mcpLogger';
 import { KiCadDiagnosticsAggregator } from './language/diagnosticsAggregator';
 import { KiCadDiagnosticsProvider } from './language/diagnosticsProvider';
 import { KiCadHoverProvider } from './language/hoverProvider';
@@ -56,13 +58,16 @@ import { KiCadCompletionProvider } from './language/completionProvider';
 import { DrcRulesProvider } from './drc/drcRulesProvider';
 import { BomViewProvider } from './providers/bomViewProvider';
 import { DiffEditorProvider } from './providers/diffEditorProvider';
+import { KiCadCodeActionProvider } from './providers/kicadCodeActionProvider';
 import { NetlistViewProvider } from './providers/netlistViewProvider';
 import { PcbEditorProvider } from './providers/pcbEditorProvider';
 import { KiCadProjectTreeProvider } from './providers/projectTreeProvider';
+import { QualityGateProvider } from './providers/qualityGateProvider';
 import { SchematicEditorProvider } from './providers/schematicEditorProvider';
 import { KiCadStatusBar } from './statusbar/kicadStatusBar';
 import { KiCadTaskProvider } from './tasks/kicadTaskProvider';
 import { VariantProvider } from './variants/variantProvider';
+import { readConfiguredMcpProfile } from './commands/mcpProfilePicker';
 import { Logger } from './utils/logger';
 import {
   getActiveResourceUri,
@@ -72,6 +77,7 @@ import { isWorkspaceTrusted } from './utils/workspaceTrust';
 import type { DiagnosticSummary, McpInstallStatus } from './types';
 
 let extensionLogger: Logger | undefined;
+let extensionMcpClient: McpClient | undefined;
 const S_EXPRESSION_LANGUAGE_IDS = new Set<string>(KICAD_S_EXPRESSION_LANGUAGES);
 
 export async function activate(
@@ -135,10 +141,15 @@ export async function activate(
   const diffEditorProvider = new DiffEditorProvider(context, gitDiffDetector);
   const aiProviders = new AIProviderRegistry(context);
   const mcpDetector = new McpDetector();
-  const mcpClient = new McpClient(context, mcpDetector, logger);
+  const mcpLogger = new McpLogger();
+  const mcpClient = new McpClient(context, mcpDetector, logger, {
+    logger: mcpLogger
+  });
+  extensionMcpClient = mcpClient;
   const contextBridge = new ContextBridge(mcpClient);
   const variantProvider = new VariantProvider(mcpClient);
   const fixQueueProvider = new FixQueueProvider(mcpClient);
+  const qualityGateProvider = new QualityGateProvider(context, mcpClient);
   const drcRulesProvider = new DrcRulesProvider(parser);
   const errorAnalyzer = new ErrorAnalyzer(aiProviders, logger);
   const circuitExplainer = new CircuitExplainer(aiProviders, logger);
@@ -196,9 +207,20 @@ export async function activate(
       new KiCadCompletionProvider(parser),
       '('
     ),
+    vscode.languages.registerCodeActionsProvider(
+      S_EXPRESSION_DOCUMENT_SELECTOR,
+      new KiCadCodeActionProvider(fixQueueProvider),
+      {
+        providedCodeActionKinds: [vscode.CodeActionKind.QuickFix]
+      }
+    ),
     vscode.window.registerTreeDataProvider(TREE_VIEW_ID, treeProvider),
     vscode.window.registerTreeDataProvider(VARIANTS_VIEW_ID, variantProvider),
     vscode.window.registerTreeDataProvider(FIX_QUEUE_VIEW_ID, fixQueueProvider),
+    vscode.window.registerTreeDataProvider(
+      QUALITY_GATE_VIEW_ID,
+      qualityGateProvider
+    ),
     vscode.window.registerTreeDataProvider(DRC_RULES_VIEW_ID, drcRulesProvider),
     vscode.window.registerWebviewViewProvider(BOM_VIEW_ID, bomViewProvider),
     vscode.window.registerWebviewViewProvider(
@@ -262,7 +284,8 @@ export async function activate(
         event.affectsConfiguration(SETTINGS.aiLanguage) ||
         event.affectsConfiguration(SETTINGS.aiOpenAIApiMode) ||
         event.affectsConfiguration(SETTINGS.mcpEndpoint) ||
-        event.affectsConfiguration(SETTINGS.mcpAutoDetect)
+        event.affectsConfiguration(SETTINGS.mcpAutoDetect) ||
+        event.affectsConfiguration(SETTINGS.mcpProfile)
       ) {
         cliDetector.clearCache();
         aiHealthy = undefined;
@@ -299,6 +322,7 @@ export async function activate(
     checkService,
     diffEditorProvider,
     fixQueueProvider,
+    qualityGateProvider,
     diagnosticsCollection,
     statusBar,
     componentSearch,
@@ -309,6 +333,7 @@ export async function activate(
     libraryIndexer,
     librarySearch,
     mcpClient,
+    mcpLogger,
     variantProvider,
     drcRulesProvider,
     treeProvider,
@@ -413,6 +438,7 @@ export async function activate(
     const cli = trusted ? await cliDetector.detect() : undefined;
     const kicadVersionMajor = Number(cli?.version.split('.')[0] ?? '0');
     const hasVariants = await workspaceHasVariants();
+    const mcpProfile = readConfiguredMcpProfile();
     await vscode.commands.executeCommand(
       'setContext',
       CONTEXT_KEYS.hasProject,
@@ -453,9 +479,15 @@ export async function activate(
       CONTEXT_KEYS.workspaceTrusted,
       isWorkspaceTrusted()
     );
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.mcpProfile,
+      mcpProfile ?? 'full'
+    );
     statusBar.update({
       aiConfigured: Boolean(provider?.isConfigured()),
-      aiHealthy
+      aiHealthy,
+      mcpProfile
     });
   }
 
@@ -491,6 +523,7 @@ export async function activate(
           diagnostics: result.diagnostics,
           summary: result.summary
         };
+        qualityGateProvider.scheduleDrcRefresh();
         await maybeOfferProactiveDrc(result.summary, result.diagnostics.length);
         await pushStudioContext('drc');
       }
@@ -537,14 +570,30 @@ export async function activate(
       CONTEXT_KEYS.mcpConnected,
       state.connected
     );
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.mcpCompatible,
+      state.server?.compat === 'ok' || state.server?.compat === 'warn'
+    );
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.mcpIncompatible,
+      state.kind === 'Incompatible'
+    );
+    await vscode.commands.executeCommand(
+      'setContext',
+      CONTEXT_KEYS.mcpDisconnected,
+      state.kind === 'Disconnected'
+    );
     statusBar.update({
-      mcpAvailable: state.available,
-      mcpConnected: state.connected
+      mcpState: state,
+      mcpProfile: readConfiguredMcpProfile()
     });
 
     if (
       state.available &&
       !state.connected &&
+      state.kind !== 'Incompatible' &&
       vscode.workspace
         .getConfiguration()
         .get<boolean>(SETTINGS.mcpAutoDetect, true)
@@ -655,8 +704,9 @@ export async function activate(
   }
 }
 
-export function deactivate(): void {
+export async function deactivate(): Promise<void> {
   extensionLogger?.info('Deactivating KiCad Studio...');
+  await extensionMcpClient?.deactivate();
 }
 
 function isSExpressionDocument(document: vscode.TextDocument): boolean {

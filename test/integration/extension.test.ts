@@ -60,9 +60,23 @@ suite('Extension Integration', () => {
       'kicadstudio.manageChatProvider',
       'kicadstudio.export3DPdf',
       'kicadstudio.setupMcpIntegration',
+      'kicadstudio.mcp.install',
+      'kicadstudio.mcp.retry',
+      'kicadstudio.mcp.openUpgradeGuide',
+      'kicadstudio.mcp.pickProfile',
+      'kicadstudio.mcp.openLog',
+      'kicadstudio.mcp.saveLog',
+      'kicadstudio.mcp.clearLog',
       'kicadstudio.openDesignIntent',
       'kicadstudio.refreshFixQueue',
       'kicadstudio.applyFixQueueItem',
+      'kicadstudio.fixQueue.apply',
+      'kicadstudio.fixQueue.applyAll',
+      'kicadstudio.qualityGate.runAll',
+      'kicadstudio.qualityGate.runThis',
+      'kicadstudio.qualityGate.showRaw',
+      'kicadstudio.qualityGate.openDocs',
+      'kicadstudio.manufacturing.release',
       'kicadstudio.variant.create',
       'kicadstudio.variant.setActive',
       'kicadstudio.variant.diffBom',
@@ -84,9 +98,18 @@ suite('Extension Integration', () => {
 
   test('registers all custom editors', async () => {
     const extension = vscode.extensions.getExtension('oaslananka.kicadstudio');
-    const customEditors = extension?.packageJSON?.contributes?.customEditors ?? [];
-    assert.ok(customEditors.some((item: any) => item.viewType === 'kicadstudio.schematicViewer'));
-    assert.ok(customEditors.some((item: any) => item.viewType === 'kicadstudio.pcbViewer'));
+    const customEditors =
+      extension?.packageJSON?.contributes?.customEditors ?? [];
+    assert.ok(
+      customEditors.some(
+        (item: any) => item.viewType === 'kicadstudio.schematicViewer'
+      )
+    );
+    assert.ok(
+      customEditors.some(
+        (item: any) => item.viewType === 'kicadstudio.pcbViewer'
+      )
+    );
   });
 
   test('creates status bar command entry', async () => {

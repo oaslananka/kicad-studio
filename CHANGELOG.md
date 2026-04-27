@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.6.0] - 2026-04-28
+
+### Added
+
+- Quality Gates sidebar surfacing project, placement, transfer, and manufacturing gates from `kicad-mcp-pro`.
+- One-click `kicad-mcp-pro` installer with `uvx`, `pipx`, and `pip` fallback.
+- MCP profile picker in the status bar with all `full`, `minimal`, `schematic_only`, `pcb_only`, `manufacturing`, `high_speed`, `power`, `simulation`, `analysis`, and `agent_full` profiles.
+- Manufacturing release wizard with pre-flight gate inspection.
+- Code Actions for MCP fix queue items that include source location metadata.
+- JSON schema validation and IntelliSense for `.vscode/mcp.json` KiCad usage.
+- `KiCad: Open MCP Log` command and redacted log viewer.
+- Real-server integration test job in GitHub Actions and Azure Pipelines.
+
+### Changed
+
+- MCP client now performs version negotiation against a documented compatibility range and reports `Connected (recommended)`, `Connected (older than recommended)`, or `Incompatible` states.
+- MCP client implements bounded retry behavior for transient request failures and exposes explicit retry actions for disconnected states.
+- MCP error notifications now surface structured `error_code` and `hint` details where the server provides them, with troubleshooting doc links.
+- Walkthroughs expanded to a first-run MCP path from install to manufacturing release.
+
+### Fixed
+
+- Cleanup-on-deactivate now awaits MCP client cleanup within the configured drain window.
+
+### Security
+
+- `.vscode/mcp.json` schema flags non-absolute `KICAD_MCP_PROJECT_DIR` values through schema guidance to reduce path mistakes in shared workspaces.
+- MCP log viewer redacts authorization headers and home-directory paths before display or save.
+
 ## [2.5.0] - 2026-04-27
 
 ### Added
