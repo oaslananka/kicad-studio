@@ -38,7 +38,7 @@ jobs:
           git fetch canonical --prune --tags
 
           # Replay every canonical branch into the org mirror
-          for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/canonical | sed 's|^canonical/||'); do
+          for ref in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/canonical); do
             [ "$ref" = "HEAD" ] && continue
             if git show-ref --verify --quiet "refs/remotes/origin/${ref}"; then
               local_sha="$(git rev-parse "refs/remotes/origin/${ref}")"
@@ -58,8 +58,7 @@ jobs:
           git push origin --tags
 
           # Prune branches that no longer exist on canonical
-          for org_branch in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
-            short="${org_branch#origin/}"
+          for short in $(git for-each-ref --format='%(refname:lstrip=3)' refs/remotes/origin); do
             [ "$short" = "HEAD" ] && continue
             if ! git show-ref --verify --quiet "refs/remotes/canonical/${short}"; then
               git push origin --delete "$short"
