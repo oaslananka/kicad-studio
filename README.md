@@ -13,12 +13,12 @@ KiCad Studio turns VS Code into a practical KiCad workspace: view schematics and
 
 ## Repository And CI/CD
 
-- GitHub mirror and Marketplace-facing repository:
-  `https://github.com/oaslananka/kicad-studio`
-- Automated CI/CD repository:
-  `https://github.com/oaslananka-lab/kicad-studio`
-- Azure DevOps and GitLab are kept as manual fallback pipelines.
-- Personal GitHub remains the main source mirror.
+- **Canonical Repository:** `https://github.com/oaslananka/kicad-studio`
+  All development and user interaction happens here. Zero GitHub Actions are consumed on this account.
+- **CI/CD Mirror:** `https://github.com/oaslananka-lab/kicad-studio`
+  Automated CI, security scans, and releases run here. The mirror periodically pulls from canonical.
+- **Operations:** See [docs/repository-operations.md](docs/repository-operations.md) for detailed guidance on the dual-owner model.
+- **Fallbacks:** Azure DevOps and GitLab pipelines are maintained for manual redundancy.
 
 ## What's New In 2.6.0
 

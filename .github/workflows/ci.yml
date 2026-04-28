@@ -47,10 +47,13 @@ jobs:
         uses: test-summary/action@v2
         with:
           paths: '**/junit.xml'
+      - name: Install Doppler CLI
+        if: matrix.os == 'ubuntu-latest'
+        uses: dopplerhq/cli-action@v4
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/lcov.info
-          fail_ci_if_error: false
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run --project all --config main -- npx codecov --file ./coverage/lcov.info --disable-search
+        shell: bash

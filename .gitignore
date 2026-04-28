@@ -1,20 +1,43 @@
+# Dependencies
 node_modules/
+
+# Build artifacts
 dist/
 dist-ts/
+build/
 out/
 *.vsix
 *.log
-.DS_Store
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+coverage.xml
 coverage/
-tmp/
-fab/
-.tmp-kicanvas-check/
+junit.xml
+test-results.xml
+*.tsbuildinfo
 .vscode-test/
-.vscode/mcp.json
+fab/
+tmp/
+.tmp-kicanvas-check/
 TEMP_FOLDER/
+
+# Config & State
+.DS_Store
+.vscode/mcp.json
 .vscode/settings.json
 # KiCad auto-generated project layout files
 *.kicad_prl
+
+# SBOMs and audit outputs (regenerated in CI)
+sbom.cdx.json
+sbom.spdx
+requirements-audit.txt
+requirements-build.txt
+.scan-results/
 
 # Agent-local notes; never commit these
 reports/autonomy_setup/
@@ -23,23 +46,6 @@ reports/phase*/
 .agent-reports/
 AUTONOMY_RESULT.md
 SETUP_LOG.md
-
-# Build artifacts
-build/
-*.pyc
-__pycache__/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-htmlcov/
-coverage.xml
-junit.xml
-test-results.xml
-*.tsbuildinfo
-
-# SBOMs and audit outputs (regenerated in CI)
-sbom.cdx.json
-sbom.spdx
-requirements-audit.txt
-requirements-build.txt
-.scan-results/
+phase*_summary.md
+00_profile.md
+FINAL.md
