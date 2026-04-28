@@ -43,7 +43,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.node-project.outputs.present == 'true'
         with:
-          node-version-file: package.json
+          node-version-file: .node-version
       - if: steps.node-project.outputs.present == 'true'
         run: npm install --frozen-lockfile || npm install
       - name: Lint
