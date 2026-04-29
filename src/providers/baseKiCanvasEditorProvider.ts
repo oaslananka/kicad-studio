@@ -10,7 +10,13 @@ import {
 } from '../constants';
 import type { ViewerMetadata, ViewerState } from '../types';
 import { bufferToBase64 } from '../utils/fileUtils';
-import { asNumber, asRecord, asString, hasType, isRecord } from '../utils/webviewMessages';
+import {
+  asNumber,
+  asRecord,
+  asString,
+  hasType,
+  isRecord
+} from '../utils/webviewMessages';
 import {
   createKiCanvasViewerHtml,
   createViewerErrorHtml,
@@ -44,7 +50,9 @@ interface PanelInfo {
   releaseTimer?: NodeJS.Timeout | undefined;
 }
 
-type ViewerSvgFallbackProvider = (uri: vscode.Uri) => Promise<string | undefined>;
+type ViewerSvgFallbackProvider = (
+  uri: vscode.Uri
+) => Promise<string | undefined>;
 
 /**
  * Shared custom editor provider for KiCanvas-backed viewers.
@@ -62,7 +70,13 @@ export abstract class BaseKiCanvasEditorProvider
   private readonly refreshDebounce = new Map<string, NodeJS.Timeout>();
   private readonly fileCache = new Map<string, CachedFilePayload>();
   private readonly stateByUri = new Map<string, ViewerState>();
-  private theme = vscode.workspace.getConfiguration().get<string>(SETTINGS.viewerTheme, 'kicad');
+  private theme = vscode.workspace
+    .getConfiguration()
+    .get<string>(SETTINGS.viewerTheme, 'kicad');
+
+  /** Fires whenever a viewer panel for this file type becomes the active editor. */
+  private readonly _onDidActivate = new vscode.EventEmitter<vscode.Uri>();
+  readonly onDidActivate: vscode.Event<vscode.Uri> = this._onDidActivate.event;
 
   constructor(
     protected readonly context: vscode.ExtensionContext,
@@ -74,7 +88,11 @@ export abstract class BaseKiCanvasEditorProvider
           return;
         }
         this.invalidateFileCache(document.uri);
-        if (!vscode.workspace.getConfiguration().get<boolean>(SETTINGS.viewerAutoRefresh, true)) {
+        if (
+          !vscode.workspace
+            .getConfiguration()
+            .get<boolean>(SETTINGS.viewerAutoRefresh, true)
+        ) {
           return;
         }
         this.scheduleRefresh(document.uri);
@@ -92,6 +110,7 @@ export abstract class BaseKiCanvasEditorProvider
       }
     }
     this.disposables.forEach((item) => item.dispose());
+    this._onDidActivate.dispose();
   }
 
   setTheme(theme: string): void {
@@ -101,7 +120,10 @@ export abstract class BaseKiCanvasEditorProvider
         type: 'setTheme',
         payload: {
           theme,
-          fallbackBackground: resolveViewerFallbackBackground(this.fileType, theme),
+          fallbackBackground: resolveViewerFallbackBackground(
+            this.fileType,
+            theme
+          ),
           restoreState: info.state ?? this.stateByUri.get(info.uri.toString())
         }
       });
@@ -112,7 +134,10 @@ export abstract class BaseKiCanvasEditorProvider
     return this.stateByUri.get(uri.toString());
   }
 
-  protected buildViewerMetadata(_uri: vscode.Uri, _text: string): ViewerMetadata | undefined {
+  protected buildViewerMetadata(
+    _uri: vscode.Uri,
+    _text: string
+  ): ViewerMetadata | undefined {
     return undefined;
   }
 
@@ -130,9 +155,13 @@ export abstract class BaseKiCanvasEditorProvider
     try {
       webviewPanel.webview.options = {
         enableScripts: true,
-        localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
+        localResourceRoots: [
+          vscode.Uri.joinPath(this.context.extensionUri, 'media')
+        ]
       };
       this.trackPanel(document.uri, webviewPanel);
+      // Notify listeners (e.g. BomViewProvider) that this viewer has opened.
+      this._onDidActivate.fire(document.uri);
       // Use a per-panel disposable store so listeners are released when the panel closes,
       // rather than accumulating in the instance-level array for the provider's lifetime.
       const panelDisposables: vscode.Disposable[] = [];
@@ -147,6 +176,8 @@ export abstract class BaseKiCanvasEditorProvider
             return;
           }
           if (event.webviewPanel.visible) {
+            // Notify listeners that this panel has become the active viewer.
+            this._onDidActivate.fire(info.uri);
             if (info.releaseTimer) {
               clearTimeout(info.releaseTimer);
               info.releaseTimer = undefined;
@@ -166,7 +197,10 @@ export abstract class BaseKiCanvasEditorProvider
             return;
           }
           if (message.type === 'openInKiCad') {
-            await vscode.commands.executeCommand(COMMANDS.openInKiCad, document.uri);
+            await vscode.commands.executeCommand(
+              COMMANDS.openInKiCad,
+              document.uri
+            );
           }
           if (message.type === 'requestRefresh') {
             await this.refreshDocument(document.uri);
@@ -198,7 +232,10 @@ export abstract class BaseKiCanvasEditorProvider
             }
           }
           if (message.type === 'exportSvg') {
-            await vscode.commands.executeCommand(COMMANDS.exportViewerSvg, document.uri);
+            await vscode.commands.executeCommand(
+              COMMANDS.exportViewerSvg,
+              document.uri
+            );
           }
           if (message.type === 'componentSelected') {
             const info = this.panelInfo.get(webviewPanel);
@@ -293,7 +330,10 @@ export abstract class BaseKiCanvasEditorProvider
     );
   }
 
-  private async postFile(panel: vscode.WebviewPanel, uri: vscode.Uri): Promise<void> {
+  private async postFile(
+    panel: vscode.WebviewPanel,
+    uri: vscode.Uri
+  ): Promise<void> {
     const payload = await this.buildViewerPayload(uri);
     panel.webview.html = createKiCanvasViewerHtml({
       title: this.viewerTitle,
@@ -324,7 +364,10 @@ export abstract class BaseKiCanvasEditorProvider
         base64: cached.base64,
         disabledReason: cached.disabledReason,
         theme: this.theme,
-        fallbackBackground: resolveViewerFallbackBackground(this.fileType, this.theme),
+        fallbackBackground: resolveViewerFallbackBackground(
+          this.fileType,
+          this.theme
+        ),
         ...(cached.metadata ? { metadata: cached.metadata } : {}),
         ...(restoreState ? { restoreState } : {})
       };
@@ -366,7 +409,10 @@ export abstract class BaseKiCanvasEditorProvider
       base64: nextPayload.base64,
       disabledReason: nextPayload.disabledReason,
       theme: this.theme,
-      fallbackBackground: resolveViewerFallbackBackground(this.fileType, this.theme),
+      fallbackBackground: resolveViewerFallbackBackground(
+        this.fileType,
+        this.theme
+      ),
       ...(nextPayload.metadata ? { metadata: nextPayload.metadata } : {}),
       ...(() => {
         const restoreState = this.stateByUri.get(cacheKey);
@@ -407,10 +453,16 @@ export abstract class BaseKiCanvasEditorProvider
     this.panelInfo.delete(panel);
   }
 
-  private async exportPngSnapshot(uri: vscode.Uri, dataUrl: string): Promise<void> {
+  private async exportPngSnapshot(
+    uri: vscode.Uri,
+    dataUrl: string
+  ): Promise<void> {
     const saveUri = await vscode.window.showSaveDialog({
       defaultUri: vscode.Uri.file(
-        path.join(path.dirname(uri.fsPath), `${path.parse(uri.fsPath).name}-viewer.png`)
+        path.join(
+          path.dirname(uri.fsPath),
+          `${path.parse(uri.fsPath).name}-viewer.png`
+        )
       ),
       filters: {
         PNG: ['png']
@@ -422,7 +474,9 @@ export abstract class BaseKiCanvasEditorProvider
 
     const base64 = dataUrl.replace(/^data:image\/png;base64,/, '');
     await vscode.workspace.fs.writeFile(saveUri, Buffer.from(base64, 'base64'));
-    void vscode.window.showInformationMessage(`Saved viewer snapshot to ${path.basename(saveUri.fsPath)}.`);
+    void vscode.window.showInformationMessage(
+      `Saved viewer snapshot to ${path.basename(saveUri.fsPath)}.`
+    );
   }
 }
 
@@ -441,26 +495,37 @@ function resolveViewerFallbackBackground(
   theme: string
 ): string {
   if (fileType === 'board') {
-    return readKiCadEditorBackground('board') ?? BUILTIN_DEFAULT_BACKGROUNDS.board;
+    return (
+      readKiCadEditorBackground('board') ?? BUILTIN_DEFAULT_BACKGROUNDS.board
+    );
   }
 
   if (theme !== 'kicad') {
     return '';
   }
 
-  return readKiCadEditorBackground('schematic') ?? BUILTIN_DEFAULT_BACKGROUNDS.schematic;
+  return (
+    readKiCadEditorBackground('schematic') ??
+    BUILTIN_DEFAULT_BACKGROUNDS.schematic
+  );
 }
 
-function readKiCadEditorBackground(fileType: 'schematic' | 'board'): string | undefined {
+function readKiCadEditorBackground(
+  fileType: 'schematic' | 'board'
+): string | undefined {
   const configDir = resolveKiCadConfigDir();
   if (!configDir) {
     return undefined;
   }
 
-  const settingsFile = path.join(configDir, fileType === 'board' ? 'pcbnew.json' : 'eeschema.json');
+  const settingsFile = path.join(
+    configDir,
+    fileType === 'board' ? 'pcbnew.json' : 'eeschema.json'
+  );
   const settings = readJsonRecord(settingsFile);
   const appearance = asRecord(settings?.['appearance']);
-  const selectedTheme = asString(appearance?.['color_theme']) ?? '_builtin_default';
+  const selectedTheme =
+    asString(appearance?.['color_theme']) ?? '_builtin_default';
 
   if (selectedTheme === '_builtin_default') {
     return BUILTIN_DEFAULT_BACKGROUNDS[fileType];
@@ -472,7 +537,9 @@ function readKiCadEditorBackground(fileType: 'schematic' | 'board'): string | un
 
   const themeFile = path.join(configDir, 'colors', `${selectedTheme}.json`);
   const themeRecord = readJsonRecord(themeFile);
-  const section = asRecord(themeRecord?.[fileType === 'board' ? 'board' : 'schematic']);
+  const section = asRecord(
+    themeRecord?.[fileType === 'board' ? 'board' : 'schematic']
+  );
   const background = asString(section?.['background']);
   return background ?? BUILTIN_DEFAULT_BACKGROUNDS[fileType];
 }
@@ -495,7 +562,9 @@ function resolveKiCadConfigDir(): string | undefined {
     root = path.join(home, 'Library', 'Preferences', 'kicad');
   } else {
     // Linux / other POSIX
-    const configHome = process.env['XDG_CONFIG_HOME'] ?? path.join(process.env['HOME'] ?? '', '.config');
+    const configHome =
+      process.env['XDG_CONFIG_HOME'] ??
+      path.join(process.env['HOME'] ?? '', '.config');
     root = path.join(configHome, 'kicad');
   }
 
@@ -505,7 +574,9 @@ function resolveKiCadConfigDir(): string | undefined {
 
   const versions = fs
     .readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && /^\d+(?:\.\d+)*$/.test(entry.name))
+    .filter(
+      (entry) => entry.isDirectory() && /^\d+(?:\.\d+)*$/.test(entry.name)
+    )
     .map((entry) => entry.name)
     .sort(compareKiCadVersionsDescending);
 
@@ -608,7 +679,12 @@ function readSelectedArea(value: unknown):
   const y1 = asNumber(value['y1']);
   const x2 = asNumber(value['x2']);
   const y2 = asNumber(value['y2']);
-  if (x1 === undefined || y1 === undefined || x2 === undefined || y2 === undefined) {
+  if (
+    x1 === undefined ||
+    y1 === undefined ||
+    x2 === undefined ||
+    y2 === undefined
+  ) {
     return undefined;
   }
   return { x1, y1, x2, y2 };

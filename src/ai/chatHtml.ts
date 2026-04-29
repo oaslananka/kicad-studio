@@ -389,9 +389,10 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
     /**
      * Scroll the message list to the bottom using requestAnimationFrame so
      * multiple calls within the same event loop tick are coalesced into a
-     * single layout pass. Only scrolls when the user is already near the
-     * bottom (within 120 px) so manual scroll-up to read history is
-     * preserved during streaming.
+     * single layout pass. While the assistant is actively streaming (state.busy)
+     * we always scroll so new chunks stay visible. Once streaming ends we only
+     * scroll when the user is already near the bottom (within 120 px) so
+     * manual scroll-up to read history is preserved.
      */
     function scheduleScrollToBottom() {
       if (state.scrollPending) {
@@ -401,8 +402,12 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
       requestAnimationFrame(() => {
         state.scrollPending = false;
         const el = nodes.messages;
+        if (state.busy) {
+          el.scrollTop = el.scrollHeight;
+          return;
+        }
         const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-        if (nearBottom || state.busy) {
+        if (nearBottom) {
           el.scrollTop = el.scrollHeight;
         }
       });
@@ -528,8 +533,13 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
      * Fast streaming update: only update the body text without rebuilding the
      * entire message article. This avoids expensive markdown re-parsing and
      * DOM reconstruction on every streamed chunk.
+     *
+     * When the <pre> element already exists we append only the new chunk as a
+     * text node instead of replacing the entire textContent string. This keeps
+     * the operation O(chunk) rather than O(total-content) so long responses
+     * do not degrade the UI.
      */
-    function updateStreamingBody(timestamp, content) {
+    function updateStreamingBody(timestamp, content, chunk) {
       const article = nodes.messages.querySelector('[data-timestamp="' + String(timestamp) + '"]');
       if (!article) {
         return;
@@ -544,8 +554,15 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
         pre = document.createElement('pre');
         pre.className = 'streaming-text';
         body.appendChild(pre);
+        // First chunk — set full content (handles hydration / reconnect cases).
+        pre.textContent = content;
+      } else if (chunk) {
+        // Subsequent chunks — append only the delta to avoid O(n²) cost.
+        pre.appendChild(document.createTextNode(chunk));
+      } else {
+        // No chunk provided (e.g. called from outside streaming path) — full replace.
+        pre.textContent = content;
       }
-      pre.textContent = content;
       scheduleScrollToBottom();
     }
     function exportTranscript() {
@@ -603,9 +620,11 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
       } else if (message.type === 'assistantChunk') {
         const target = state.history.find((item) => item.timestamp === message.timestamp);
         if (target) {
-          target.content = text(target.content) + text(message.text);
+          const chunk = text(message.text);
+          target.content = text(target.content) + chunk;
           // Fast path: only update the streaming text area — no full re-render.
-          updateStreamingBody(message.timestamp, target.content);
+          // Pass chunk so updateStreamingBody can append rather than replace.
+          updateStreamingBody(message.timestamp, target.content, chunk);
         }
       } else if (message.type === 'assistantReplace') {
         const index = state.history.findIndex((item) => item.timestamp === message.message?.timestamp);

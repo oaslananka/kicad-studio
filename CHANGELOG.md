@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.7.7] - 2026-04-29
+
+### Added
+
+- **Component Search sidebar panel** — a new _Component Search_ view in the KiCad Studio sidebar
+  shows action buttons to launch the component search QuickPick, set the Octopart/Nexar API key,
+  and set the AI API key — all without opening the settings page.
+- **`SchematicEditorProvider.onDidActivate`** — internal event emitted whenever a `.kicad_sch` file
+  is opened or brought to focus in the custom schematic viewer (webview panel).
+
+### Fixed
+
+- **BOM panel empty when schematic viewer is open** — `BomViewProvider` now listens to the
+  schematic viewer's activation event and refreshes the BOM for the active viewer URI, not just
+  the active text editor. The fallback workspace scan is still present but is now the last resort
+  rather than triggering unnecessarily.
+- **AI Chat scroll freezes during agent streaming** — `scheduleScrollToBottom` now always scrolls
+  to the bottom while `state.busy` is `true`, so long streaming responses stay pinned to the
+  viewport without the lag caused by the `nearBottom` guard.
+- **AI Chat O(n²) streaming cost** — `updateStreamingBody` now appends each incoming chunk as a
+  `TextNode` instead of replacing the entire `pre.textContent` string. Rendering cost is O(chunk)
+  per tick rather than O(total-content), preventing UI thread saturation on long responses.
+- **VS Code Codex provider broken in 2025+** — removed the stale `{ vendor: 'copilot', family: 'codex' }`
+  selector (no longer registered by Copilot) and added `gpt-4.1` / `o3` families so the provider
+  resolves an available model in current VS Code releases.
+
 ## [2.7.6] - 2026-04-29
 
 ### Fixed

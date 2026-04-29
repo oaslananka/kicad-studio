@@ -10,6 +10,7 @@ export const VARIANTS_VIEW_ID = 'kicadstudio.variants';
 export const FIX_QUEUE_VIEW_ID = 'kicadstudio.fixQueue';
 export const DRC_RULES_VIEW_ID = 'kicadstudio.drcRules';
 export const QUALITY_GATE_VIEW_ID = 'kicadstudio.qualityGate';
+export const COMPONENT_SEARCH_VIEW_ID = 'kicadstudio.componentSearch';
 export const KICAD_EXPORT_PRESETS_FILE = 'kicad-export-presets.json';
 export const SCHEMATIC_EDITOR_VIEW_TYPE = 'kicadstudio.schematicViewer';
 export const PCB_EDITOR_VIEW_TYPE = 'kicadstudio.pcbViewer';

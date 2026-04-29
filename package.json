@@ -2,7 +2,7 @@
   "name": "kicadstudio",
   "displayName": "KiCad Studio",
   "description": "The complete KiCad development environment for VS Code — view schematics & PCBs, run DRC/ERC, export production files, search components, and get AI-powered design assistance.",
-  "version": "2.7.6",
+  "version": "2.7.7",
   "publisher": "oaslananka",
   "engines": {
     "vscode": "^1.99.0",
@@ -267,6 +267,11 @@
           "name": "DRC Rules",
           "when": "kicadstudio.hasProject",
           "icon": "assets/icon-dark.png"
+        },
+        {
+          "id": "kicadstudio.componentSearch",
+          "name": "Component Search",
+          "icon": "assets/icon-dark.png"
         }
       ]
     },
@@ -315,6 +320,10 @@
       {
         "view": "kicadstudio.drcRules",
         "contents": "Open a `.kicad_dru` file or add one to the workspace to inspect graphical rules."
+      },
+      {
+        "view": "kicadstudio.componentSearch",
+        "contents": "Search for components by part number, keyword, or footprint across local KiCad libraries, LCSC, and Octopart/Nexar.\n[Search Component](command:kicadstudio.searchComponent)\n\nStore your Octopart/Nexar API key to enable cloud search:\n[Set Octopart/Nexar API Key](command:kicadstudio.setOctopartApiKey)\n\nConfigure AI provider keys for AI-assisted matching:\n[Set AI API Key](command:kicadstudio.setAiApiKey)"
       }
     ],
     "commands": [

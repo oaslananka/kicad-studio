@@ -19,6 +19,7 @@ import { OctopartClient } from './components/octopartClient';
 import {
   BOM_VIEW_ID,
   COMMANDS,
+  COMPONENT_SEARCH_VIEW_ID,
   CONTEXT_KEYS,
   DIAGNOSTIC_COLLECTION_NAME,
   KICAD_S_EXPRESSION_LANGUAGES,
@@ -227,7 +228,18 @@ export async function activate(
       NETLIST_VIEW_ID,
       netlistViewProvider
     ),
-    vscode.tasks.registerTaskProvider('kicad', new KiCadTaskProvider())
+    // Component search view — empty tree so viewsWelcome shows the action buttons.
+    vscode.window.registerTreeDataProvider(COMPONENT_SEARCH_VIEW_ID, {
+      getTreeItem: (element: vscode.TreeItem) => element,
+      getChildren: () => []
+    }),
+    vscode.tasks.registerTaskProvider('kicad', new KiCadTaskProvider()),
+    // Wire schematic viewer activation → BOM refresh so the BOM panel updates
+    // when a .kicad_sch file is opened in the custom viewer (webview), not just
+    // when it is the active text editor.
+    schematicEditorProvider.onDidActivate((uri) =>
+      bomViewProvider.setSchematicUri(uri)
+    )
   );
 
   context.subscriptions.push(
