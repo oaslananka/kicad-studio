@@ -41,7 +41,7 @@ describe('AIProviderRegistry per-provider keys', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('uses the OpenAI gpt-5.5 default and Gemini provider key', async () => {
+  it('uses the OpenAI gpt-5 default and Gemini provider key', async () => {
     const context = createExtensionContextMock();
     const registry = new AIProviderRegistry(context as never);
     await registry.setApiKey('openai', 'openai-key');
@@ -52,7 +52,7 @@ describe('AIProviderRegistry per-provider keys', () => {
 
     expect(openai?.name).toBe('OpenAI');
     expect(gemini?.name).toBe('Gemini');
-    expect(registry.getDefaultModel('openai')).toBe('gpt-5.5');
+    expect(registry.getDefaultModel('openai')).toBe('gpt-5');
   });
 
   it('handles provider selection branches without leaking shared keys', async () => {

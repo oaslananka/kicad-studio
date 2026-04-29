@@ -5,11 +5,11 @@ import {
 } from '../../src/ai/modelCatalog';
 
 describe('AI model catalog', () => {
-  it('uses gpt-5.5 as the recommended OpenAI default', () => {
-    expect(getDefaultModel('openai')).toBe('gpt-5.5');
+  it('uses gpt-5 as the recommended OpenAI default', () => {
+    expect(getDefaultModel('openai')).toBe('gpt-5');
     expect(getRecommendedModel('openai')).toEqual(
       expect.objectContaining({
-        id: 'gpt-5.5',
+        id: 'gpt-5',
         provider: 'openai',
         recommended: true
       })

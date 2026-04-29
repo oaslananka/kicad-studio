@@ -1,6 +1,15 @@
 import { McpClient } from '../../src/mcp/mcpClient';
 import { __setConfiguration, createExtensionContextMock } from './vscodeMock';
 
+// Prevent the VsCodeStdio fallback from reading the real .vscode/mcp.json on
+// disk (which exists in this workspace). Tests that need filesystem-based MCP
+// detection should un-mock and set up their own fs stubs.
+jest.mock('node:fs', () => ({
+  ...jest.requireActual<typeof import('node:fs')>('node:fs'),
+  existsSync: jest.fn().mockReturnValue(false),
+  readFileSync: jest.fn().mockReturnValue('{}')
+}));
+
 function createJsonResponse(
   body: unknown,
   init?: { status?: number; headers?: Record<string, string> }

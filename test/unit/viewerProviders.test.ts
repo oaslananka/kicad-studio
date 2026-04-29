@@ -234,19 +234,16 @@ describe.each([
     const provider = new ContextProvider({
       extensionUri: vscode.Uri.file('/extension')
     } as vscode.ExtensionContext) as unknown as SchematicEditorProvider;
+    // KiCad 10 hop-overs are top-level (arc ...) elements, NOT (junction ...).
+    // The arc line must be indented with exactly 2 spaces to match the regex.
     const metadata = (provider as any).buildViewerMetadata(
       vscode.Uri.file(tempFile),
-      `(kicad_sch
-        (version 20260301)
-        (wire (pts (xy 50 50) (xy 90 50)))
-        (wire (pts (xy 70 30) (xy 70 70)))
-        (junction (at 70 50))
-      )`
+      '(kicad_sch\n  (version 20260301)\n  (arc (start 45 50) (mid 50 55) (end 55 50))\n)'
     ) as { hopOvers?: Array<{ x: number; y: number }>; notes?: string[] };
 
-    expect(metadata.hopOvers).toEqual([{ x: 70, y: 50 }]);
+    expect(metadata.hopOvers).toEqual([{ x: 45, y: 50 }]);
     expect(metadata.notes).toEqual([
-      'KiCad 10 hop-over junction detected at 70, 50. An overlay hint will be shown until KiCanvas renders hop-overs natively.'
+      '1 KiCad 10 hop-over arc detected. Overlay hint shown until KiCanvas renders them natively.'
     ]);
   });
 
