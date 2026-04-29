@@ -1,5 +1,36 @@
 # Changelog
 
+## [2.7.2] - 2026-04-29
+
+### Fixed
+
+- **OpenAI HTTP 400**: replaced deprecated `max_tokens` parameter with `max_completion_tokens`
+  in the chat/completions path; required by GPT-5, GPT-5-mini, and other newer models.
+- **Chat streaming performance**: `assistantChunk` messages now update only the raw text
+  container instead of re-running full markdown parsing and DOM reconstruction on every
+  streamed token. Full markdown render occurs once on `assistantReplace` (stream end).
+  Added blinking-cursor typing indicator and removed duplicate "Streaming…" status flash.
+- **Schematic hop-over detection**: `SchematicEditorProvider` previously matched `(junction ...)`
+  elements (intentional wire-connection dots) as hop-over arcs, producing incorrect viewer
+  overlay positions and noisy sidebar notes. Detection now targets top-level `(arc ...)` elements
+  outside the `lib_symbols` block — the actual KiCad 10 representation of hop-over arcs —
+  and consolidates notes to a single count message.
+- **MCP Disconnected false-negative**: when the HTTP endpoint is unreachable but
+  `.vscode/mcp.json` contains a kicad-mcp-pro stdio server entry (VS Code Copilot MCP),
+  the extension now transitions to `VsCodeStdio` state and shows a connected status with a
+  descriptive tooltip instead of "MCP Disconnected".
+
+### Added
+
+- **GPT-5 / GPT-5-mini models**: added to the OpenAI model catalog with `chat-completions`
+  mode; GPT-5 promoted as the new default OpenAI model.
+- **VS Code Codex provider**: new `CodexProvider` (wraps VS Code LM API with Codex family
+  selectors) registered as the `codex` AI provider option; available in the AI Chat dropdown.
+- **CH224A-breakout attribution**: added the UW Reality Labs
+  [CH224A-breakout](https://github.com/uwrealitylabs/CH224A-breakout) KiCad 10 project to the
+  README as a documented development benchmark — used to validate schematic viewer, MCP
+  integration, DRC analysis, and AI chat features against a real-world board.
+
 ## [2.7.1] - 2026-04-28
 
 ### Security

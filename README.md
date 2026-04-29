@@ -54,12 +54,22 @@ KiCad Studio turns VS Code into a practical KiCad workspace: view schematics and
 | Time-domain tuning metadata | Not available                         | Supported                                           |
 | MCP-assisted fix workflows  | Supported when project context exists | Supported                                           |
 
+## Example Projects
+
+The following open-source KiCad projects have been used for development testing and are cited here with attribution.
+
+| Project                                                                                                                    | Description                                                                                                                                                                | License        |
+| -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| [CH224A-breakout](https://github.com/uwrealitylabs/CH224A-breakout) by [UW Reality Labs](https://github.com/uwrealitylabs) | KiCad 10 breakout board for the CH224A USB-C PD sink controller. Used as a real-world benchmark for schematic viewer, DRC analysis, MCP integration, and AI chat features. | See repository |
+
+These projects are not bundled with this extension; attribution is provided for transparency.
+
 ## AI And MCP
 
 ### AI Providers
 
 - Claude and OpenAI use SecretStorage-backed API keys.
-- GitHub Copilot and Gemini use the VS Code Language Model API when available.
+- GitHub Copilot, GitHub Codex, and Gemini use the VS Code Language Model API when available.
 - AI features remain opt-in and are disabled when no provider is configured.
 
 ### `kicad-mcp-pro` Integration
