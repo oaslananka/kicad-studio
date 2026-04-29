@@ -131,3 +131,17 @@ export class CopilotProvider extends BaseLanguageModelProvider {
     { vendor: 'copilot' }
   ];
 }
+
+/**
+ * VS Code Codex provider — uses the VS Code Language Model API with Codex/code
+ * family models available through GitHub Copilot or other VS Code LM extensions.
+ */
+export class CodexProvider extends BaseLanguageModelProvider {
+  readonly name = 'VS Code Codex';
+  protected readonly selectors = [
+    { vendor: 'copilot', family: 'codex' },
+    { vendor: 'copilot', family: 'gpt-4o' },
+    { vendor: 'copilot', family: 'claude-sonnet' },
+    { vendor: 'copilot' }
+  ];
+}

@@ -159,6 +159,17 @@ export class KiCadStatusBar implements vscode.Disposable {
       };
       return;
     }
+    if (this.mcpKind === 'VsCodeStdio') {
+      this.mcpItem.text = `$(plug) MCP${profile}`;
+      this.mcpItem.tooltip =
+        'Connected via VS Code stdio (.vscode/mcp.json). ' +
+        'kicad-mcp-pro is managed by VS Code Copilot — HTTP endpoint not required.';
+      this.mcpItem.command = {
+        command: COMMANDS.pickMcpProfile,
+        title: 'Pick MCP Profile'
+      };
+      return;
+    }
     if (this.mcpConnected) {
       this.mcpItem.text = `$(plug) MCP${profile}`;
       this.mcpItem.tooltip =

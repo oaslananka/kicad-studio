@@ -8,7 +8,7 @@ import {
   type AiSecretProvider
 } from '../utils/secrets';
 import { ClaudeProvider } from './claudeProvider';
-import { CopilotProvider } from './copilotProvider';
+import { CodexProvider, CopilotProvider } from './copilotProvider';
 import { GeminiProvider } from './geminiProvider';
 import { getDefaultModel } from './modelCatalog';
 import { OpenAIProvider } from './openaiProvider';
@@ -49,6 +49,10 @@ export class AIProviderRegistry {
 
     if (selected === 'copilot') {
       return new CopilotProvider();
+    }
+
+    if (selected === 'codex') {
+      return new CodexProvider();
     }
 
     if (selected === 'claude') {
@@ -109,7 +113,8 @@ export class AIProviderRegistry {
     return provider === 'claude' ||
       provider === 'openai' ||
       provider === 'copilot' ||
-      provider === 'gemini'
+      provider === 'gemini' ||
+      provider === 'codex'
       ? getDefaultModel(provider)
       : '';
   }

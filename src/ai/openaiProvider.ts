@@ -232,7 +232,9 @@ export class OpenAIProvider implements AIProvider {
       'https://api.openai.com/v1/chat/completions',
       {
         model: this.model,
-        max_tokens: AI_MAX_TOKENS,
+        // Newer OpenAI models (gpt-4.5, gpt-5, gpt-5-mini, o-series) require
+        // max_completion_tokens instead of the deprecated max_tokens parameter.
+        max_completion_tokens: AI_MAX_TOKENS,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: this.buildUserMessage(prompt, context) }

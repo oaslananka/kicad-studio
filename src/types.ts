@@ -316,7 +316,8 @@ export type McpConnectionKind =
   | 'Disconnected'
   | 'Connecting'
   | 'Connected'
-  | 'Incompatible';
+  | 'Incompatible'
+  | 'VsCodeStdio';
 
 export interface McpCapabilityCard {
   tools: string[];

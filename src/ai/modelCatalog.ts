@@ -1,4 +1,4 @@
-export type AiProviderId = 'claude' | 'openai' | 'copilot' | 'gemini';
+export type AiProviderId = 'claude' | 'openai' | 'copilot' | 'gemini' | 'codex';
 
 export interface ModelInfo {
   id: string;
@@ -49,15 +49,35 @@ export const CLAUDE_MODELS: AiModelInfo[] = [
 
 export const OPENAI_MODELS: AiModelInfo[] = [
   {
+    id: 'gpt-5',
+    provider: 'openai',
+    label: 'GPT-5 (Most capable)',
+    maxTokens: 32768,
+    maxOutputTokens: 32768,
+    supportsStreaming: true,
+    contextWindow: 1000000,
+    recommended: true,
+    default: true,
+    apiMode: 'chat-completions'
+  },
+  {
+    id: 'gpt-5-mini',
+    provider: 'openai',
+    label: 'GPT-5 Mini (Fast)',
+    maxTokens: 16384,
+    maxOutputTokens: 16384,
+    supportsStreaming: true,
+    contextWindow: 1000000,
+    apiMode: 'chat-completions'
+  },
+  {
     id: 'gpt-5.5',
     provider: 'openai',
-    label: 'GPT-5.5 (Recommended)',
+    label: 'GPT-5.5 (Responses API)',
     maxTokens: 16384,
     maxOutputTokens: 16384,
     supportsStreaming: true,
     contextWindow: 128000,
-    recommended: true,
-    default: true,
     apiMode: 'responses'
   },
   {
@@ -157,11 +177,25 @@ export const COPILOT_MODELS: AiModelInfo[] = [
   }
 ];
 
+export const CODEX_MODELS: AiModelInfo[] = [
+  {
+    id: 'codex/default',
+    provider: 'codex',
+    label: 'VS Code Codex (Best available)',
+    maxTokens: 4096,
+    supportsStreaming: true,
+    contextWindow: 128000,
+    recommended: true,
+    default: true
+  }
+];
+
 export const MODEL_CATALOG: Record<AiProviderId, AiModelInfo[]> = {
   claude: CLAUDE_MODELS,
   openai: OPENAI_MODELS,
   gemini: GEMINI_MODELS,
-  copilot: COPILOT_MODELS
+  copilot: COPILOT_MODELS,
+  codex: CODEX_MODELS
 };
 
 export const AI_MODEL_CATALOG = MODEL_CATALOG;

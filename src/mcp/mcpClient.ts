@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SETTINGS } from '../constants';
 import type {
@@ -107,6 +109,17 @@ export class McpClient {
     const install = await this.detectInstall();
     const endpoint = this.getEndpoint();
     if (!endpoint) {
+      // No HTTP endpoint configured — check for VS Code stdio MCP config.
+      if (hasVsCodeMcpJsonWithKicad()) {
+        return this.setState({
+          kind: 'VsCodeStdio',
+          available: true,
+          connected: true,
+          install,
+          message:
+            'kicad-mcp-pro configured via .vscode/mcp.json (VS Code stdio).'
+        });
+      }
       return this.setState({
         kind: install.found ? 'Disconnected' : 'NotInstalled',
         available: install.found,
@@ -137,6 +150,18 @@ export class McpClient {
       this.logger.debug(
         `MCP connection test failed: ${error instanceof Error ? error.message : String(error)}`
       );
+      // HTTP endpoint unreachable — fall back to VS Code stdio detection.
+      if (hasVsCodeMcpJsonWithKicad()) {
+        return this.setState({
+          kind: 'VsCodeStdio',
+          available: true,
+          connected: true,
+          install,
+          server: this.state.server,
+          message:
+            'kicad-mcp-pro configured via .vscode/mcp.json (VS Code stdio). HTTP endpoint unavailable.'
+        });
+      }
       return this.setState({
         kind: install.found ? 'Disconnected' : 'NotInstalled',
         available: install.found,
@@ -850,4 +875,41 @@ function normalizeStructuredError(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Returns true when a .vscode/mcp.json file in any workspace folder contains
+ * a server entry that runs kicad-mcp-pro (stdio transport). This indicates
+ * the MCP server is managed by VS Code rather than the extension's HTTP client.
+ */
+function hasVsCodeMcpJsonWithKicad(): boolean {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders?.length) {
+    return false;
+  }
+  for (const folder of folders) {
+    const mcpJsonPath = path.join(folder.uri.fsPath, '.vscode', 'mcp.json');
+    try {
+      const raw = fs.readFileSync(mcpJsonPath, 'utf8');
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const servers = isRecord(parsed['servers']) ? parsed['servers'] : {};
+      return Object.values(servers).some((server) => {
+        if (!isRecord(server)) {
+          return false;
+        }
+        const cmd =
+          typeof server['command'] === 'string' ? server['command'] : '';
+        const args = Array.isArray(server['args']) ? server['args'] : [];
+        return (
+          cmd === 'kicad-mcp-pro' ||
+          args.some(
+            (arg) => typeof arg === 'string' && arg.includes('kicad-mcp-pro')
+          )
+        );
+      });
+    } catch {
+      // File not found or invalid JSON — continue to next folder.
+    }
+  }
+  return false;
 }

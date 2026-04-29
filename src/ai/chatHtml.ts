@@ -253,6 +253,33 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
       font-size: 11px;
       white-space: nowrap;
     }
+    .streaming-text {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: inherit;
+      margin: 0;
+      border: none;
+      background: none;
+      padding: 0;
+    }
+    .typing-indicator {
+      color: var(--muted);
+      font-style: italic;
+    }
+    .typing-indicator::after {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 13px;
+      background: var(--accent);
+      margin-left: 3px;
+      vertical-align: text-bottom;
+      animation: blink 0.9s step-end infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
     @media (max-width: 680px) {
       header { grid-template-columns: 1fr; }
       .toolbar { justify-content: flex-start; }
@@ -278,6 +305,7 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
         <option value="openai">OpenAI</option>
         <option value="copilot">Copilot</option>
         <option value="gemini">Gemini</option>
+        <option value="codex">Codex (VS Code)</option>
       </select>
       <input id="model" type="text" aria-label="Model" placeholder="Model override">
       <button id="settings" class="icon" type="button" title="Open KiCad Studio settings" aria-label="Open settings">&#9881;</button>
@@ -351,9 +379,7 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
       state.busy = !!busy;
       nodes.send.disabled = state.busy;
       nodes.cancel.disabled = !state.busy;
-      if (state.busy) {
-        setStatus('Streaming...');
-      }
+      nodes.send.textContent = state.busy ? '…' : 'Send';
     }
     function clearMessages() {
       for (const item of [...nodes.messages.querySelectorAll('.message')]) {
@@ -377,14 +403,23 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
       ta.remove();
       setStatus('Copied message.');
     }
-    function renderBody(body, message) {
+    function renderBody(body, message, streaming) {
       body.replaceChildren();
       if (message.role === 'assistant') {
         const content = text(message.content);
         if (!content) {
           const typing = document.createElement('span');
-          typing.textContent = 'Thinking...';
+          typing.className = 'typing-indicator';
+          typing.textContent = 'Thinking…';
           body.appendChild(typing);
+          return;
+        }
+        if (streaming) {
+          // Fast path during streaming: plain text only — skip expensive markdown parse.
+          const pre = document.createElement('pre');
+          pre.className = 'streaming-text';
+          pre.textContent = content;
+          body.appendChild(pre);
           return;
         }
         body.innerHTML = window.KiCadChatMarkdown.renderMarkdown(content);
@@ -438,7 +473,7 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
       );
       container.appendChild(actions);
     }
-    function renderMessage(message) {
+    function renderMessage(message, streaming) {
       let article = nodes.messages.querySelector('[data-timestamp="' + String(message.timestamp) + '"]');
       if (!article) {
         article = document.createElement('article');
@@ -458,11 +493,38 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
       head.append(role, time);
       const body = document.createElement('div');
       body.className = 'body';
-      renderBody(body, message);
+      renderBody(body, message, !!streaming);
       article.append(head, body);
-      renderActions(article, message, body);
-      renderTools(article, message);
+      if (!streaming) {
+        renderActions(article, message, body);
+        renderTools(article, message);
+      }
       nodes.empty.style.display = nodes.messages.querySelector('.message') ? 'none' : 'block';
+      nodes.messages.scrollTop = nodes.messages.scrollHeight;
+    }
+
+    /**
+     * Fast streaming update: only update the body text without rebuilding the
+     * entire message article. This avoids expensive markdown re-parsing and
+     * DOM reconstruction on every streamed chunk.
+     */
+    function updateStreamingBody(timestamp, content) {
+      const article = nodes.messages.querySelector('[data-timestamp="' + String(timestamp) + '"]');
+      if (!article) {
+        return;
+      }
+      const body = article.querySelector('.body');
+      if (!body) {
+        return;
+      }
+      let pre = body.querySelector('.streaming-text');
+      if (!pre) {
+        body.replaceChildren();
+        pre = document.createElement('pre');
+        pre.className = 'streaming-text';
+        body.appendChild(pre);
+      }
+      pre.textContent = content;
       nodes.messages.scrollTop = nodes.messages.scrollHeight;
     }
     function exportTranscript() {
@@ -506,7 +568,7 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
         nodes.contextInfo.textContent = message.contextInfo || '';
         clearMessages();
         for (const item of state.history) {
-          renderMessage(item);
+          renderMessage(item, false);
         }
         nodes.empty.style.display = state.history.length ? 'none' : 'block';
         setBusy(!!message.busy);
@@ -516,12 +578,13 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
         estimateTokens();
       } else if (message.type === 'appendMessage') {
         state.history.push(message.message);
-        renderMessage(message.message);
+        renderMessage(message.message, false);
       } else if (message.type === 'assistantChunk') {
         const target = state.history.find((item) => item.timestamp === message.timestamp);
         if (target) {
           target.content = text(target.content) + text(message.text);
-          renderMessage(target);
+          // Fast path: only update the streaming text area — no full re-render.
+          updateStreamingBody(message.timestamp, target.content);
         }
       } else if (message.type === 'assistantReplace') {
         const index = state.history.findIndex((item) => item.timestamp === message.message?.timestamp);
@@ -530,7 +593,8 @@ export function buildChatHtml(options: ChatHtmlOptions): string {
         } else {
           state.history.push(message.message);
         }
-        renderMessage(message.message);
+        // Full render with markdown now that streaming is complete.
+        renderMessage(message.message, false);
       } else if (message.type === 'status') {
         setStatus(message.text || 'Ready');
       } else if (message.type === 'busy') {
